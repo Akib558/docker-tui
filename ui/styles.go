@@ -3,29 +3,30 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	// Dark green color palette
-	colorPrimary    = lipgloss.Color("#00E676") // bright green
-	colorSecondary  = lipgloss.Color("#69F0AE") // light green
-	colorAccent     = lipgloss.Color("#B9F6CA") // pale green
-	colorSuccess    = lipgloss.Color("#00E676") // green
-	colorDanger     = lipgloss.Color("#FF5252") // red
-	colorWarning    = lipgloss.Color("#FFD740") // amber
-	colorMuted      = lipgloss.Color("#4E6E5D") // muted green-gray
-	colorText       = lipgloss.Color("#E8F5E9") // near white green tint
-	colorSubtext    = lipgloss.Color("#A5D6A7") // light green gray
-	colorBgAlt      = lipgloss.Color("#0D2818") // dark green surface
-	colorBgSelected = lipgloss.Color("#1B5E20") // selected row green
-	colorBorder     = lipgloss.Color("#2E7D32") // green border
-	colorDim        = lipgloss.Color("#1B5E20") // dim green for decorative
+	// ── Dark green palette ──────────────────────────────────────────
+	colorPrimary    = lipgloss.Color("#00E676")
+	colorSecondary  = lipgloss.Color("#69F0AE")
+	colorAccent     = lipgloss.Color("#B9F6CA")
+	colorSuccess    = lipgloss.Color("#00E676")
+	colorDanger     = lipgloss.Color("#FF5252")
+	colorWarning    = lipgloss.Color("#FFD740")
+	colorMuted      = lipgloss.Color("#4E6E5D")
+	colorText       = lipgloss.Color("#E8F5E9")
+	colorSubtext    = lipgloss.Color("#A5D6A7")
+	colorBgAlt      = lipgloss.Color("#0D2818")
+	colorBgSelected = lipgloss.Color("#1B5E20")
+	colorBorder     = lipgloss.Color("#2E7D32")
+	colorDim        = lipgloss.Color("#1B5E20")
+	colorCyan       = lipgloss.Color("#00BCD4")
 
-	// Title / header bar
+	// ── Title / header ──────────────────────────────────────────────
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#0A0F0D")).
 			Background(colorPrimary).
 			Padding(0, 2)
 
-	// Container list styles
+	// ── List ────────────────────────────────────────────────────────
 	listHeaderStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorSecondary).
@@ -43,20 +44,12 @@ var (
 				Bold(true).
 				PaddingLeft(1)
 
-	// Status badges
-	statusRunning = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorSuccess)
+	// ── Status indicators ───────────────────────────────────────────
+	statusRunning = lipgloss.NewStyle().Bold(true).Foreground(colorSuccess)
+	statusStopped = lipgloss.NewStyle().Bold(true).Foreground(colorDanger)
+	statusOther   = lipgloss.NewStyle().Bold(true).Foreground(colorWarning)
 
-	statusStopped = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorDanger)
-
-	statusOther = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(colorWarning)
-
-	// Detail panel styles
+	// ── Detail panel ────────────────────────────────────────────────
 	detailBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
@@ -67,10 +60,8 @@ var (
 				Bold(true).
 				Width(16)
 
-	detailValueStyle = lipgloss.NewStyle().
-				Foreground(colorText)
+	detailValueStyle = lipgloss.NewStyle().Foreground(colorText)
 
-	// Section headers in detail view
 	sectionHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(colorPrimary).
@@ -79,7 +70,7 @@ var (
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(colorDim)
 
-	// Tab styles
+	// ── Tabs ────────────────────────────────────────────────────────
 	activeTabStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#0A0F0D")).
@@ -91,38 +82,20 @@ var (
 				Background(colorBgAlt).
 				Padding(0, 2)
 
-	// Help bar
-	helpBarStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
+	// ── Help bar ────────────────────────────────────────────────────
+	helpBarStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	helpKeyStyle = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
+	helpDescStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
-	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true)
+	// ── Notifications ───────────────────────────────────────────────
+	notifySuccessStyle = lipgloss.NewStyle().Foreground(colorSuccess).Bold(true)
+	notifyErrorStyle   = lipgloss.NewStyle().Foreground(colorDanger).Bold(true)
 
-	helpDescStyle = lipgloss.NewStyle().
-			Foreground(colorMuted)
+	// ── Table ───────────────────────────────────────────────────────
+	tableHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorSecondary).PaddingRight(2)
+	cursorStyle      = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 
-	// Notifications
-	notifySuccessStyle = lipgloss.NewStyle().
-				Foreground(colorSuccess).
-				Bold(true)
-
-	notifyErrorStyle = lipgloss.NewStyle().
-				Foreground(colorDanger).
-				Bold(true)
-
-	// Table column header
-	tableHeaderStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(colorSecondary).
-				PaddingRight(2)
-
-	// Cursor for selected row
-	cursorStyle = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true)
-
-	// Stat card styles
+	// ── Stat cards ──────────────────────────────────────────────────
 	statCardBorder = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorBorder).
