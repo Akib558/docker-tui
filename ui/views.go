@@ -2,9 +2,11 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/akib/docker-tui/config"
 	"github.com/akib/docker-tui/docker"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -16,12 +18,21 @@ func (m Model) View() string {
 		return ""
 	}
 
+	// When a dialog is active, render it as a full-screen overlay
+	if m.dialog != dialogNone {
+		return m.renderDialogOverlay()
+	}
+
 	var content string
-	switch m.currentView {
-	case listView:
+	switch m.view {
+	case viewList:
 		content = m.viewList()
-	case detailView:
+	case viewDetail:
 		content = m.viewDetail()
+	case viewImages:
+		content = m.viewImages()
+	case viewEvents:
+		content = m.viewEvents()
 	}
 
 	// Pad to full terminal height to prevent flicker
@@ -32,6 +43,69 @@ func (m Model) View() string {
 	return content
 }
 
+// ── Dialog overlay ───────────────────────────────────────────────────────
+
+func (m Model) renderDialogOverlay() string {
+	var d string
+	switch m.dialog {
+	case dialogConfirm:
+		d = m.renderConfirmDialog()
+	case dialogTheme:
+		d = m.renderThemeDialog()
+	case dialogInput:
+		d = m.renderInputDialog()
+	}
+	if d == "" {
+		return ""
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, d)
+}
+
+func (m Model) renderConfirmDialog() string {
+	title := dialogTitleStyle.Render("⚠  Confirm Action")
+	msg := lipgloss.NewStyle().Foreground(colorText).Render(m.confirmMsg)
+	btns := "\n" + helpKeyStyle.Render("y") + " " + helpDescStyle.Render("confirm") +
+		"  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  " +
+		helpKeyStyle.Render("n/esc") + " " + helpDescStyle.Render("cancel")
+	content := title + "\n\n" + msg + "\n" + btns
+	w := min(64, m.width-8)
+	return dialogStyle.Width(w).Render(content)
+}
+
+func (m Model) renderThemeDialog() string {
+	title := dialogTitleStyle.Render("  Select Theme")
+	var lines []string
+	for i, t := range config.Themes {
+		if i == m.themeCursor {
+			line := cursorStyle.Render("▸ ") + listItemSelStyle.Render(" "+t.Name+" ")
+			lines = append(lines, line)
+		} else {
+			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(colorText).Render(t.Name))
+		}
+	}
+	help := "\n" + helpKeyStyle.Render("j/k") + " " + helpDescStyle.Render("navigate") +
+		"  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  " +
+		helpKeyStyle.Render("enter") + " " + helpDescStyle.Render("select") +
+		"  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  " +
+		helpKeyStyle.Render("esc") + " " + helpDescStyle.Render("cancel")
+	content := title + "\n\n" + strings.Join(lines, "\n") + "\n" + help
+	w := min(44, m.width-8)
+	return dialogStyle.Width(w).Render(content)
+}
+
+func (m Model) renderInputDialog() string {
+	title := dialogTitleStyle.Render(m.inputPrompt)
+	inputW := min(44, m.width-16)
+	cursor := lipgloss.NewStyle().Foreground(colorPrimary).Render("█")
+	input := inputStyle.Width(inputW).Render(m.inputText + cursor)
+	help := "\n" + helpKeyStyle.Render("enter") + " " + helpDescStyle.Render("submit") +
+		"  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  " +
+		helpKeyStyle.Render("esc") + " " + helpDescStyle.Render("cancel")
+	content := title + "\n\n" + input + "\n" + help
+	w := min(54, m.width-8)
+	return dialogStyle.Width(w).Render(content)
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  LIST VIEW
 // ═══════════════════════════════════════════════════════════════════════
@@ -39,6 +113,7 @@ func (m Model) View() string {
 func (m Model) viewList() string {
 	var b strings.Builder
 	w := m.width
+	filtered := m.filteredContainers()
 
 	// ── Header ──────────────────────────────────────────────────────
 	b.WriteString(m.renderHeader(w))
@@ -68,6 +143,16 @@ func (m Model) viewList() string {
 		b.WriteString(m.helpCentered(w))
 		return b.String()
 	}
+	if len(filtered) == 0 {
+		msg := "No containers match the current filter."
+		if m.filterText != "" {
+			msg = fmt.Sprintf("No containers match filter %q.", m.filterText)
+		}
+		empty := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(msg)
+		b.WriteString("\n" + lipgloss.PlaceHorizontal(w, lipgloss.Center, empty) + "\n\n")
+		b.WriteString(m.helpCentered(w))
+		return b.String()
+	}
 
 	// ── Table ───────────────────────────────────────────────────────
 	cols := m.calcColumns()
@@ -84,17 +169,17 @@ func (m Model) viewList() string {
 	if m.cursor >= visibleRows {
 		startIdx = m.cursor - visibleRows + 1
 	}
-	endIdx := min(startIdx+visibleRows, len(m.containers))
+	endIdx := min(startIdx+visibleRows, len(filtered))
 
 	for i := startIdx; i < endIdx; i++ {
-		b.WriteString(m.renderTableRow(i, cols) + "\n")
+		b.WriteString(m.renderTableRow(filtered[i], i == m.cursor, cols) + "\n")
 	}
 
 	// Scroll indicator
-	if len(m.containers) > visibleRows {
-		pct := float64(m.cursor) / float64(max(len(m.containers)-1, 1)) * 100
+	if len(filtered) > visibleRows {
+		pct := float64(m.cursor) / float64(max(len(filtered)-1, 1)) * 100
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).
-			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.cursor+1, len(m.containers), pct)) + "\n")
+			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.cursor+1, len(filtered), pct)) + "\n")
 	}
 
 	b.WriteString(m.renderNotification())
@@ -106,48 +191,64 @@ func (m Model) viewList() string {
 // ── Header bar ──────────────────────────────────────────────────────────
 
 func (m Model) renderHeader(w int) string {
-	logo := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render("  DOCKER TUI")
+	logo := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render("⬡ DOCKER TUI")
 
-	// Docker info string (only if we have it)
-	var info string
-	if m.overview != nil {
-		parts := []string{"v" + m.overview.ServerVersion}
-		parts = append(parts, fmt.Sprintf("%d images", m.overview.Images))
-		parts = append(parts, fmt.Sprintf("%d CPUs", m.overview.CPUs))
-		info = lipgloss.NewStyle().Foreground(colorSubtext).
-			Render(strings.Join(parts, "  |  "))
+	// Center content: filter bar, multi-select count, or docker info
+	var center string
+	if m.filtering {
+		filterText := m.filterText
+		if filterText == "" {
+			filterText = "type to search..."
+		}
+		searchIcon := lipgloss.NewStyle().Foreground(colorWarning).Render("⌕ ")
+		filterContent := lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render(filterText)
+		cursor := lipgloss.NewStyle().Foreground(colorWarning).Render("█")
+		if m.filterText != "" {
+			filterContent += cursor
+		}
+		center = filterBarStyle.Render(searchIcon + filterContent)
+	} else if len(m.selected) > 0 {
+		center = selectedMarkStyle.Render(fmt.Sprintf("◈ %d container(s) selected", len(m.selected)))
+	} else if m.overview != nil {
+		dot := lipgloss.NewStyle().Foreground(colorDim).Render(" · ")
+		parts := []string{
+			lipgloss.NewStyle().Foreground(colorSubtext).Render("v" + m.overview.ServerVersion),
+			lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%d images", m.overview.Images)),
+			lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%d CPUs", m.overview.CPUs)),
+		}
+		center = strings.Join(parts, dot)
 	}
 
 	ts := lipgloss.NewStyle().Foreground(colorMuted).Render(time.Now().Format("15:04:05"))
 
-	// Layout: logo ... info ... timestamp
+	// Layout: logo [center] timestamp
 	leftLen := lipgloss.Width(logo)
-	midLen := lipgloss.Width(info)
+	midLen := lipgloss.Width(center)
 	rightLen := lipgloss.Width(ts)
-	totalContent := leftLen + midLen + rightLen + 6
+	totalUsed := leftLen + midLen + rightLen
 
 	var bar string
-	if totalContent <= w && midLen > 0 {
-		gap1 := (w - totalContent) / 2
-		gap2 := w - leftLen - gap1 - midLen - rightLen - 2
-		if gap1 < 1 {
-			gap1 = 1
+	if totalUsed+4 <= w && midLen > 0 {
+		leftPad := (w - totalUsed) / 2
+		rightPad := w - leftLen - leftPad - midLen - rightLen
+		if leftPad < 1 {
+			leftPad = 1
 		}
-		if gap2 < 1 {
-			gap2 = 1
+		if rightPad < 1 {
+			rightPad = 1
 		}
-		bar = logo + strings.Repeat(" ", gap1) + info + strings.Repeat(" ", gap2) + ts + " "
+		bar = logo + strings.Repeat(" ", leftPad) + center + strings.Repeat(" ", rightPad) + ts
 	} else {
-		gap := w - leftLen - rightLen - 2
+		gap := w - leftLen - rightLen - 1
 		if gap < 1 {
 			gap = 1
 		}
-		bar = logo + strings.Repeat(" ", gap) + ts + " "
+		bar = logo + strings.Repeat(" ", gap) + ts
 	}
 
-	headerBar := lipgloss.NewStyle().Background(colorBgAlt).Width(w).Render(bar)
-	line := lipgloss.NewStyle().Foreground(colorDim).Render(strings.Repeat("─", w))
-	return headerBar + "\n" + line + "\n"
+	headerBar := lipgloss.NewStyle().Background(colorBgAlt).Width(w).Render(" " + bar + " ")
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", w))
+	return headerBar + "\n" + sep + "\n"
 }
 
 // ── Dashboard (stat cards + host stats) ─────────────────────────────────
@@ -167,17 +268,22 @@ func (m Model) renderDashboard(w int) string {
 	total := len(m.containers)
 
 	// Responsive card width
-	cardW := 18
+	cardW := 16
 	if w >= 120 {
-		cardW = 20
+		cardW = 18
 	} else if w < 60 {
-		cardW = 14
+		cardW = 12
 	}
 
 	makeCard := func(label, value string, vc lipgloss.Color) string {
-		v := statCardValue.Foreground(vc).Width(cardW - 4).Render(value)
-		l := statCardLabel.Width(cardW - 4).Render(label)
-		return statCardBorder.Width(cardW).BorderForeground(vc).Render(l + "\n" + v)
+		inner := cardW - 6 // account for border+padding
+		if inner < 4 {
+			inner = 4
+		}
+		icon := lipgloss.NewStyle().Foreground(vc).Render("▪ ")
+		l := statCardLabel.Width(inner).Render(label)
+		v := statCardValue.Foreground(vc).Width(inner).Render(value)
+		return statCardBorder.Width(cardW).BorderForeground(vc).Render(icon + l + "\n" + "  " + v)
 	}
 
 	cards := []string{
@@ -194,13 +300,16 @@ func (m Model) renderDashboard(w int) string {
 		var hostLines []string
 		mem := m.systemMem
 		if mem.Total > 0 {
-			barW := cardW + 4
+			barW := cardW + 2
+			if barW < 8 {
+				barW = 8
+			}
 			hostLines = append(hostLines,
-				lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("MEM ")+
-					hostMemBar(mem.Percent, barW-4))
+				lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("MEM  ")+
+					hostMemBar(mem.Percent, barW-5))
 			hostLines = append(hostLines,
-				lipgloss.NewStyle().Foreground(colorSubtext).
-					Render(fmt.Sprintf("%s / %s", formatBytes(mem.Used), formatBytes(mem.Total))))
+				lipgloss.NewStyle().Foreground(colorDim).
+					Render(fmt.Sprintf("     %s / %s", formatBytes(mem.Used), formatBytes(mem.Total))))
 		}
 		load := m.systemLoad
 		if load.Load1 > 0 {
@@ -210,17 +319,17 @@ func (m Model) renderDashboard(w int) string {
 						Render(fmt.Sprintf("%.2f  %.2f  %.2f", load.Load1, load.Load5, load.Load15)))
 		}
 		if len(hostLines) > 0 {
+			hostTitle := lipgloss.NewStyle().Foreground(colorCyan).Bold(true).Render("⬡ HOST")
 			hostCard := lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(colorCyan).
-				Padding(0, 2).
-				Render(lipgloss.NewStyle().Foreground(colorCyan).Bold(true).Render("HOST") + "\n" +
-					strings.Join(hostLines, "\n"))
+				Padding(0, 1).
+				Render(hostTitle + "\n" + strings.Join(hostLines, "\n"))
 			cards = append(cards, hostCard)
 		}
 	}
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, interleave(cards, " ")...)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, interleave(cards, "  ")...)
 	return lipgloss.PlaceHorizontal(w, lipgloss.Center, row)
 }
 
@@ -284,50 +393,51 @@ func (m Model) calcColumns() columns {
 }
 
 func (m Model) renderTableHeader(c columns) string {
-	parts := fmt.Sprintf("  %s %s",
-		tableHeaderStyle.Width(c.state).Render(""),
-		tableHeaderStyle.Width(c.name).Render("NAME"),
-	)
+	sel := "  " // placeholder for cursor/select column (2 chars)
+	parts := sel +
+		columnHeaderStyle.Width(c.state).Render("") + " " +
+		tableHeaderStyle.Width(c.name).Render("NAME")
 	if c.image > 0 {
 		parts += " " + tableHeaderStyle.Width(c.image).Render("IMAGE")
 	}
 	if c.showCPU {
-		parts += " " + tableHeaderStyle.Width(c.cpu).Render("CPU")
+		parts += " " + tableHeaderStyle.Width(c.cpu).Render("CPU %")
 	}
 	if c.showMem {
-		parts += " " + tableHeaderStyle.Width(c.mem).Render("MEM")
+		parts += " " + tableHeaderStyle.Width(c.mem).Render("MEM %")
 	}
 	parts += " " + tableHeaderStyle.Width(c.status).Render("STATUS")
 	if c.showPorts {
 		parts += " " + tableHeaderStyle.Width(c.ports).Render("PORTS")
 	}
 	if c.showID {
-		parts += " " + tableHeaderStyle.Width(c.id).Render("ID")
+		parts += " " + tableHeaderStyle.Width(c.id).Render("CONTAINER ID")
 	}
 	return listHeaderStyle.Width(m.width).Render(parts)
 }
 
-func (m Model) renderTableRow(i int, c columns) string {
-	ct := m.containers[i]
+func (m Model) renderTableRow(ct docker.ContainerInfo, isCursor bool, c columns) string {
 	icon := stateIcon(ct.State)
 	stStyle := stateStyle(ct.State)
+	isMultiSel := m.selected[ct.ID]
 
-	row := fmt.Sprintf("%s %s",
-		stStyle.Width(c.state).Render(icon),
-		lipgloss.NewStyle().Width(c.name).Foreground(colorText).Render(truncate(ct.Name, c.name-1)),
-	)
+	row := stStyle.Width(c.state).Render(icon) + " " +
+		lipgloss.NewStyle().Width(c.name).Foreground(colorText).Render(truncate(ct.Name, c.name-1))
+
 	if c.image > 0 {
 		row += " " + lipgloss.NewStyle().Width(c.image).Foreground(colorSubtext).Render(truncate(ct.Image, c.image-1))
 	}
 	if c.showCPU {
-		cpuStr := lipgloss.NewStyle().Width(c.cpu).Foreground(colorDim).Render(strings.Repeat("░", max(c.cpu-5, 2)) + "   -")
+		noData := lipgloss.NewStyle().Width(c.cpu).Foreground(colorDim).Render(strings.Repeat("░", max(c.cpu-5, 2)) + " ···")
+		cpuStr := noData
 		if s, ok := m.stats[ct.ID]; ok {
 			cpuStr = lipgloss.NewStyle().Width(c.cpu).Render(miniBar(s.CPUPercent, c.cpu-1))
 		}
 		row += " " + cpuStr
 	}
 	if c.showMem {
-		memStr := lipgloss.NewStyle().Width(c.mem).Foreground(colorDim).Render(strings.Repeat("░", max(c.mem-5, 2)) + "   -")
+		noData := lipgloss.NewStyle().Width(c.mem).Foreground(colorDim).Render(strings.Repeat("░", max(c.mem-5, 2)) + " ···")
+		memStr := noData
 		if s, ok := m.stats[ct.ID]; ok {
 			memStr = lipgloss.NewStyle().Width(c.mem).Render(miniBar(s.MemPercent, c.mem-1))
 		}
@@ -339,13 +449,22 @@ func (m Model) renderTableRow(i int, c columns) string {
 		row += " " + lipgloss.NewStyle().Width(c.ports).Foreground(colorSecondary).Render(truncate(p, c.ports-1))
 	}
 	if c.showID {
-		row += " " + lipgloss.NewStyle().Width(c.id).Foreground(colorMuted).Render(ct.ID)
+		row += " " + lipgloss.NewStyle().Width(c.id).Foreground(colorDim).Render(truncate(ct.ID, c.id-1))
 	}
 
-	if i == m.cursor {
-		return cursorStyle.Render("▸ ") + listItemSelectedStyle.Width(m.width-4).Render(row)
+	rowW := m.width - 4
+	switch {
+	case isCursor && isMultiSel:
+		mark := selectedMarkStyle.Render("◉ ")
+		return mark + listItemSelStyle.Width(rowW).Render(row)
+	case isCursor:
+		return cursorStyle.Render("▸ ") + listItemSelStyle.Width(rowW).Render(row)
+	case isMultiSel:
+		mark := selectedMarkStyle.Render("◈ ")
+		return mark + listItemStyle.Background(colorBgSelected).Width(rowW).Render(row)
+	default:
+		return "  " + listItemStyle.Width(rowW).Render(row)
 	}
-	return "  " + listItemStyle.Width(m.width-4).Render(row)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -367,28 +486,34 @@ func (m Model) viewDetail() string {
 	// Header
 	b.WriteString(m.renderHeader(w))
 
-	// Container identity
+	// Container identity bar
 	icon := stateIcon(c.State)
 	stStyle := stateStyle(c.State)
-	identity := "  " +
-		lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(c.Name) + "  " +
-		stStyle.Render(icon+" "+c.State) + "  " +
-		lipgloss.NewStyle().Foreground(colorMuted).Render(c.ID)
+	nameStr := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(c.Name)
+	stateStr := stStyle.Render(icon + " " + c.State)
+	idStr := lipgloss.NewStyle().Foreground(colorDim).Render(truncate(c.ID, 16))
+	imgStr := lipgloss.NewStyle().Foreground(colorSubtext).Render(truncate(c.Image, max(w/3, 20)))
+	dot := lipgloss.NewStyle().Foreground(colorDim).Render("  ·  ")
+	identity := "  " + nameStr + dot + stateStr + dot + imgStr + dot + idStr
 	b.WriteString(identity + "\n\n")
 
 	// Tabs
-	tabs := []string{"Info", "Resources", "Environment", "Logs"}
+	tabNames := []string{"Info", "Resources", "Environment", "Logs", "Terminal"}
 	var tabRow strings.Builder
 	tabRow.WriteString("  ")
-	for i, t := range tabs {
+	for i, t := range tabNames {
+		num := lipgloss.NewStyle().Foreground(colorDim).Render(fmt.Sprintf("%d:", i+1))
+		label := num + " " + t
 		if i == m.detailTab {
-			tabRow.WriteString(activeTabStyle.Render(" " + t + " "))
+			tabRow.WriteString(activeTabStyle.Render(label))
 		} else {
-			tabRow.WriteString(inactiveTabStyle.Render(" " + t + " "))
+			tabRow.WriteString(inactiveTabStyle.Render(label))
 		}
-		tabRow.WriteString(" ")
+		tabRow.WriteString("  ")
 	}
-	b.WriteString(tabRow.String() + "\n")
+	tabLine := tabRow.String()
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", w))
+	b.WriteString(tabLine + "\n" + sep + "\n")
 
 	// Tab content
 	contentWidth := w - 8
@@ -406,11 +531,13 @@ func (m Model) viewDetail() string {
 		tabContent = m.renderEnvTab(c, contentWidth)
 	case 3:
 		tabContent = m.renderLogsTab(contentWidth)
+	case 4:
+		tabContent = m.renderTerminalTab(c, contentWidth)
 	}
 
 	// Scroll
 	lines := strings.Split(tabContent, "\n")
-	boxChrome := 14
+	boxChrome := 15 // header(2) + sep(1) + identity(2) + tabs(1) + sep(1) + box-border(2) + help(1) + padding(5)
 	availHeight := m.height - boxChrome
 	if availHeight < 5 {
 		availHeight = 5
@@ -702,7 +829,13 @@ func (m Model) renderEnvTab(c *docker.ContainerInfo, width int) string {
 // ── Logs tab ────────────────────────────────────────────────────────────
 
 func (m Model) renderLogsTab(width int) string {
-	if m.logs == "" {
+	if len(m.logLines) == 0 {
+		return lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  No logs available.")
+	}
+
+	cleaned := sanitizeOutputText(strings.Join(m.logLines, "\n"))
+	if cleaned == "" {
 		return lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
 			Render("  No logs available.")
 	}
@@ -710,7 +843,6 @@ func (m Model) renderLogsTab(width int) string {
 	var b strings.Builder
 	b.WriteString(sectionHeaderStyle.Width(width).Render("  Container Logs (last 50 lines)") + "\n")
 
-	cleaned := cleanDockerLogs(m.logs)
 	for _, line := range strings.Split(cleaned, "\n") {
 		if len(line) > width-4 {
 			line = line[:width-4]
@@ -720,31 +852,286 @@ func (m Model) renderLogsTab(width int) string {
 	return b.String()
 }
 
+func (m Model) renderTerminalTab(c *docker.ContainerInfo, width int) string {
+	if c.State != "running" {
+		return lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  Terminal is only available for running containers.")
+	}
+
+	var b strings.Builder
+	state := "disconnected"
+	if m.terminalActive {
+		state = "connected"
+	}
+	header := fmt.Sprintf("  Embedded Terminal (%s)", state)
+	b.WriteString(sectionHeaderStyle.Width(width).Render(header) + "\n")
+	if m.terminalShell != "" {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSubtext).Render("shell: "+m.terminalShell) + "\n")
+	}
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
+		Render("Ctrl+\\ detach | Enter send | x reconnect") + "\n\n")
+
+	out := sanitizeOutputText(m.terminalOutput)
+	if out == "" {
+		out = "(no terminal output yet)"
+	}
+	lines := strings.Split(out, "\n")
+	show := lines
+	maxLines := max(6, m.height-20)
+	if len(lines) > maxLines {
+		show = lines[len(lines)-maxLines:]
+	}
+	for _, line := range show {
+		if lipgloss.Width(line) > width-4 {
+			line = truncate(line, width-4)
+		}
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorText).Render(line) + "\n")
+	}
+	prompt := "  > " + m.terminalInput
+	b.WriteString("\n" + inputStyle.Width(width-2).Render(prompt))
+	return b.String()
+}
+
+func (m Model) viewImages() string {
+	var b strings.Builder
+	w := m.width
+
+	b.WriteString(m.renderHeader(w))
+	b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).
+		Render(fmt.Sprintf("Images  (%d)", len(m.images))) + "\n\n")
+
+	if m.loading {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  Loading images...") + "\n")
+		b.WriteString(m.imagesHelp(w))
+		return b.String()
+	}
+	if len(m.images) == 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  No images found.") + "\n")
+		b.WriteString(m.imagesHelp(w))
+		return b.String()
+	}
+
+	// Responsive column widths
+	tagW := max(w*35/100, 20)
+	idW := 14
+	sizeW := 10
+	dateW := 16
+	usedW := tagW + idW + sizeW + dateW + 8
+	if usedW > w-4 {
+		tagW = max(w-idW-sizeW-dateW-12, 12)
+	}
+
+	// Table header
+	hdr := "  " +
+		tableHeaderStyle.Width(tagW).Render("TAG") + "  " +
+		tableHeaderStyle.Width(idW).Render("IMAGE ID") + "  " +
+		tableHeaderStyle.Width(sizeW).Render("SIZE") + "  " +
+		tableHeaderStyle.Width(dateW).Render("CREATED")
+	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
+
+	// Visible rows
+	usedLines := 9
+	visibleRows := max(3, m.height-usedLines)
+	startIdx := 0
+	if m.imgCursor >= visibleRows {
+		startIdx = m.imgCursor - visibleRows + 1
+	}
+	endIdx := min(startIdx+visibleRows, len(m.images))
+
+	for i := startIdx; i < endIdx; i++ {
+		img := m.images[i]
+		row := lipgloss.NewStyle().Width(tagW).Foreground(colorText).Render(truncate(img.DisplayTag(), tagW-1)) + "  " +
+			lipgloss.NewStyle().Width(idW).Foreground(colorDim).Render(truncate(img.ID, idW-1)) + "  " +
+			lipgloss.NewStyle().Width(sizeW).Foreground(colorSubtext).Render(formatBytes(uint64(img.Size))) + "  " +
+			lipgloss.NewStyle().Width(dateW).Foreground(colorMuted).Render(img.Created.Format("2006-01-02 15:04"))
+		if i == m.imgCursor {
+			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(w-4).Render(row) + "\n")
+		} else {
+			b.WriteString("  " + listItemStyle.Width(w-4).Render(row) + "\n")
+		}
+	}
+
+	if len(m.images) > visibleRows {
+		pct := float64(m.imgCursor) / float64(max(len(m.images)-1, 1)) * 100
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).
+			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.imgCursor+1, len(m.images), pct)) + "\n")
+	}
+
+	b.WriteString("\n" + m.imagesHelp(w))
+	return b.String()
+}
+
+func (m Model) imagesHelp(w int) string {
+	keys := []struct{ key, desc string }{
+		{"j/k", "navigate"},
+		{"p", "pull image"},
+		{"d", "remove"},
+		{"r", "refresh"},
+		{"t", "theme"},
+		{"esc", "back"},
+	}
+	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
+}
+
+func (m Model) viewEvents() string {
+	var b strings.Builder
+	w := m.width
+	b.WriteString(m.renderHeader(w))
+	b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).
+		Render(fmt.Sprintf("Events  (%d)", len(m.events))) + "\n\n")
+
+	// Column widths
+	timeW := 9
+	typeW := 12
+	actionW := 14
+	actorW := max(w*22/100, 16)
+	idW := max(w-timeW-typeW-actionW-actorW-12, 10)
+
+	// Table header
+	hdr := "  " +
+		tableHeaderStyle.Width(timeW).Render("TIME") + "  " +
+		tableHeaderStyle.Width(typeW).Render("TYPE") + "  " +
+		tableHeaderStyle.Width(actionW).Render("ACTION") + "  " +
+		tableHeaderStyle.Width(actorW).Render("ACTOR") + "  " +
+		tableHeaderStyle.Width(idW).Render("CONTAINER ID")
+	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
+
+	if len(m.events) == 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  Waiting for docker events...") + "\n")
+	} else {
+		maxRows := max(3, m.height-12)
+		start := 0
+		if len(m.events) > maxRows {
+			start = len(m.events) - maxRows
+		}
+		for i := start; i < len(m.events); i++ {
+			ev := m.events[i]
+
+			// Color-code type
+			var typeStr string
+			switch ev.Type {
+			case "container":
+				typeStr = eventTypeContainer.Width(typeW).Render(ev.Type)
+			case "network":
+				typeStr = eventTypeNetwork.Width(typeW).Render(ev.Type)
+			case "volume":
+				typeStr = eventTypeVolume.Width(typeW).Render(ev.Type)
+			default:
+				typeStr = lipgloss.NewStyle().Foreground(colorSubtext).Width(typeW).Render(ev.Type)
+			}
+
+			// Color-code action
+			var actionStr string
+			switch {
+			case ev.Action == "start" || ev.Action == "create" || ev.Action == "connect":
+				actionStr = eventActionStart.Width(actionW).Render(ev.Action)
+			case ev.Action == "stop" || ev.Action == "die" || ev.Action == "destroy" || ev.Action == "kill":
+				actionStr = eventActionStop.Width(actionW).Render(ev.Action)
+			default:
+				actionStr = eventActionOther.Width(actionW).Render(ev.Action)
+			}
+
+			row := lipgloss.NewStyle().Foreground(colorMuted).Width(timeW).Render(ev.Time.Format("15:04:05")) + "  " +
+				typeStr + "  " +
+				actionStr + "  " +
+				lipgloss.NewStyle().Foreground(colorText).Width(actorW).Render(truncate(ev.Actor, actorW-1)) + "  " +
+				lipgloss.NewStyle().Foreground(colorDim).Width(idW).Render(truncate(ev.ID, idW-1))
+
+			if i == m.cursor {
+				b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(w-4).Render(row) + "\n")
+			} else {
+				b.WriteString("  " + listItemStyle.Width(w-4).Render(row) + "\n")
+			}
+		}
+	}
+
+	keys := []struct{ key, desc string }{
+		{"j/k", "navigate"},
+		{"c", "clear"},
+		{"esc", "back"},
+	}
+	b.WriteString("\n" + helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys))))
+	return b.String()
+}
+
 // ── Help bars ───────────────────────────────────────────────────────────
 
 func (m Model) helpCentered(w int) string {
-	keys := []struct{ key, desc string }{
-		{"j/k", "navigate"},
-		{"enter", "details"},
-		{"s", "start/stop"},
-		{"r", "refresh"},
-		{"q", "quit"},
+	var keys []struct{ key, desc string }
+	if m.filtering {
+		keys = []struct{ key, desc string }{
+			{"type", "search"},
+			{"backspace", "delete"},
+			{"enter/esc", "done"},
+			{"ctrl+u", "clear"},
+		}
+	} else if len(m.selected) > 0 {
+		keys = []struct{ key, desc string }{
+			{"space", "toggle select"},
+			{"a", "select all"},
+			{"s", "start/stop"},
+			{"R", "restart"},
+			{"d", "remove"},
+			{"esc/a", "deselect"},
+		}
+	} else {
+		keys = []struct{ key, desc string }{
+			{"j/k", "navigate"},
+			{"enter", "details"},
+			{"space", "select"},
+			{"/", "filter"},
+			{"s", "start/stop"},
+			{"e", "exec shell"},
+			{"i", "images"},
+			{"v", "events"},
+			{"t", "theme"},
+			{"q", "quit"},
+		}
 	}
-	return helpBarStyle.Render(lipgloss.PlaceHorizontal(w, lipgloss.Center, fmtKeys(keys)))
+	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
 }
 
 func (m Model) detailHelp(w int) string {
-	keys := []struct{ key, desc string }{
-		{"</>", "tabs"},
-		{"j/k", "scroll"},
-		{"s", "start/stop"},
-		{"esc", "back"},
+	var keys []struct{ key, desc string }
+	if m.detailTab == 3 {
+		live := "start live"
+		if m.liveLogging {
+			live = "stop live"
+		}
+		keys = []struct{ key, desc string }{
+			{"tab/←/→", "switch tab"},
+			{"j/k", "scroll"},
+			{"l", live},
+			{"s", "start/stop"},
+			{"esc", "back"},
+		}
+	} else if m.detailTab == 4 {
+		keys = []struct{ key, desc string }{
+			{"type", "input"},
+			{"enter", "send"},
+			{"ctrl+\\", "detach"},
+			{"x", "reconnect"},
+			{"esc", "back"},
+		}
+	} else {
+		keys = []struct{ key, desc string }{
+			{"tab/←/→", "switch tab"},
+			{"j/k", "scroll"},
+			{"s", "start/stop"},
+			{"R", "restart"},
+			{"d", "remove"},
+			{"e", "exec shell"},
+			{"esc", "back"},
+		}
 	}
-	return helpBarStyle.Render(lipgloss.PlaceHorizontal(w, lipgloss.Center, fmtKeys(keys)))
+	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
 }
 
 func fmtKeys(keys []struct{ key, desc string }) string {
-	sep := "  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  "
+	sep := " " + lipgloss.NewStyle().Foreground(colorDim).Render("·") + " "
 	var parts []string
 	for _, k := range keys {
 		parts = append(parts, helpKeyStyle.Render(k.key)+" "+helpDescStyle.Render(k.desc))
@@ -759,9 +1146,9 @@ func (m Model) renderNotification() string {
 		return ""
 	}
 	if m.notifyIsErr {
-		return notifyErrorStyle.Render("  "+m.notification) + "\n"
+		return "  " + notifyErrorStyle.Render(m.notification) + "\n"
 	}
-	return notifySuccessStyle.Render("  "+m.notification) + "\n"
+	return "  " + notifySuccessStyle.Render(m.notification) + "\n"
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────
@@ -814,7 +1201,46 @@ func cleanDockerLogs(s string) string {
 		}
 		cleaned.WriteString(line + "\n")
 	}
-	return strings.TrimRight(cleaned.String(), "\n")
+	return strings.TrimRight(sanitizeOutputText(cleaned.String()), "\n")
+}
+
+var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\a]*(\a|\x1b\\)|\x1b[@-_]`)
+
+func sanitizeOutputText(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = ansiEscapeRE.ReplaceAllString(s, "")
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\t':
+			return r
+		}
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, s)
+
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	emptyRun := 0
+	for _, line := range lines {
+		line = strings.TrimRight(line, " \t")
+		if strings.TrimSpace(line) == "" {
+			emptyRun++
+			if emptyRun > 1 {
+				continue
+			}
+			out = append(out, "")
+			continue
+		}
+		emptyRun = 0
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 func interleave(items []string, spacer string) []string {

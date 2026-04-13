@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -276,6 +277,45 @@ func (c *Client) InspectContainer(id string) (*ContainerInfo, error) {
 	}, nil
 }
 
+func (c *Client) RestartContainer(id string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return c.cli.ContainerRestart(ctx, id, container.StopOptions{})
+}
+
+func (c *Client) RemoveContainer(id string, force bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return c.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: force})
+}
+
+type DiffEntry struct {
+	Path string
+	Kind string // "M" modify, "A" add, "D" delete
+}
+
+func (c *Client) GetContainerDiff(id string) ([]DiffEntry, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	changes, err := c.cli.ContainerDiff(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]DiffEntry, 0, len(changes))
+	for _, ch := range changes {
+		kind := "M"
+		switch int(ch.Kind) {
+		case 1:
+			kind = "A"
+		case 2:
+			kind = "D"
+		}
+		result = append(result, DiffEntry{Path: ch.Path, Kind: kind})
+	}
+	return result, nil
+}
+
 func (c *Client) StartContainer(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -315,6 +355,55 @@ func (c *Client) GetContainerLogs(id string, lines int) (string, error) {
 		}
 	}
 	return result.String(), nil
+}
+
+func (c *Client) GetContainerLogsStream(ctx context.Context, id string) (io.ReadCloser, error) {
+	return c.cli.ContainerLogs(ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     true,
+		Tail:       "200",
+	})
+}
+
+type execReadWriteCloser struct {
+	io.Reader
+	io.Writer
+	closeFn func() error
+}
+
+func (e *execReadWriteCloser) Close() error {
+	if e.closeFn != nil {
+		return e.closeFn()
+	}
+	return nil
+}
+
+func (c *Client) StartContainerExecShell(ctx context.Context, id, shell string) (io.ReadWriteCloser, error) {
+	resp, err := c.cli.ContainerExecCreate(ctx, id, container.ExecOptions{
+		Tty:          true,
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          []string{shell},
+	})
+	if err != nil {
+		return nil, err
+	}
+	attach, err := c.cli.ContainerExecAttach(ctx, resp.ID, container.ExecAttachOptions{
+		Tty: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &execReadWriteCloser{
+		Reader: attach.Reader,
+		Writer: attach.Conn,
+		closeFn: func() error {
+			attach.Close()
+			return nil
+		},
+	}, nil
 }
 
 // ── Stats ───────────────────────────────────────────────────────────────
