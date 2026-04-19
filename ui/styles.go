@@ -123,7 +123,8 @@ func rebuildStyles() {
 		Padding(0, 1)
 
 	inactiveTabStyle = lipgloss.NewStyle().
-		Foreground(colorMuted).Padding(0, 1)
+		Foreground(colorMuted).Padding(0, 1).
+		BorderBottom(true).BorderStyle(lipgloss.ThickBorder()).BorderForeground(colorDim)
 
 	helpBarStyle = lipgloss.NewStyle().
 		Foreground(colorMuted).Background(colorBgAlt).Padding(0, 1)

@@ -1,3 +1,5 @@
+//go:build linux
+
 package docker
 
 import (
@@ -6,19 +8,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-type SystemMemory struct {
-	Total     uint64
-	Used      uint64
-	Available uint64
-	Percent   float64
-}
-
-type SystemLoad struct {
-	Load1  float64
-	Load5  float64
-	Load15 float64
-}
 
 func GetSystemMemory() SystemMemory {
 	f, err := os.Open("/proc/meminfo")

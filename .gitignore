@@ -1,0 +1,39 @@
+# Binaries
+docker-tui
+docker-tui-new
+dist/
+
+# Build artifacts
+*.exe
+*.test
+*.out
+*.prof
+
+# Go workspace
+/vendor/
+go.work
+go.work.sum
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cache / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# goreleaser
+.goreleaser.yaml
+
+# Coverage
+coverage.out
+coverage.html
