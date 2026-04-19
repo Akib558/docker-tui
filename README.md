@@ -1,56 +1,71 @@
 # docker-tui
 
-A fast, keyboard-driven terminal UI for Docker — manage containers, images, and events without leaving your terminal.
+A fast, keyboard-first terminal UI for Docker. Monitor containers, inspect details, manage images, and follow events in one place.
 
-![CI](https://github.com/akib/docker-tui/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Akib558/docker-tui/actions/workflows/ci.yml/badge.svg)
 ![Go version](https://img.shields.io/badge/go-1.25%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
----
+![docker-tui dashboard](docs/images/docker-tui-dashboard.png)
+
+## Why docker-tui
+
+- **Productive by default**: optimized for keyboard workflows and low-friction operations.
+- **Operational visibility**: live container CPU/memory usage, host memory/load, and event stream.
+- **Focused management**: inspect, start/stop/restart/remove containers, and manage images without context switching.
 
 ## Features
 
-- **Container list** — live CPU/mem bars, state icons, filter, multi-select
-- **Detail view** — info, resources (sparklines + progress bars), environment, live logs, embedded shell
-- **Images view** — list, remove, pull
-- **Events stream** — real-time Docker events with color-coded actions
-- **Host stats** — system memory + load average dashboard
-- **10 themes** — dark-green, dracula, nord, gruvbox, tokyo-night, catppuccin-mocha, catppuccin-latte, rose-pine, ayu-dark, monokai
-- **History** — CPU/mem sparklines persist across restarts
-- **Responsive** — adapts columns to terminal width (80 → 220+ cols)
-- **Mouse support** — scroll wheel + click to select rows
+- Container list with live CPU/memory bars, filter, multi-select, and compose grouping
+- Detail view with tabs for info, resources, environment, logs, and terminal
+- Images view for listing, pulling, and removing images
+- Real-time Docker events stream with action highlighting
+- Host dashboard with system memory and load averages
+- Persistent CPU/memory history (sparklines survive restarts)
+- Responsive layout for narrow and wide terminals
+- Mouse support (scroll and row selection)
+- 10 built-in themes
 
-## Install
+## Installation
 
-### go install
+### Pre-built binary (recommended)
+
+Download the latest release from [Releases](https://github.com/Akib558/docker-tui/releases).
+
+### `go install`
+
 ```bash
 go install github.com/akib/docker-tui@latest
 ```
 
 ### Build from source
+
 ```bash
-git clone https://github.com/akib/docker-tui
+git clone https://github.com/Akib558/docker-tui
 cd docker-tui
-make build          # produces ./docker-tui
+make build          # creates ./docker-tui
 make install        # installs to $GOPATH/bin
 ```
 
-### Binary releases
-Download a pre-built binary from the [Releases page](https://github.com/akib/docker-tui/releases).
-
 ## Requirements
 
-- Go 1.25+ (build from source)
-- Docker daemon running and accessible (socket or `DOCKER_HOST`)
-- Terminal with 256-color support (most modern terminals)
+- Docker daemon running and accessible (local socket or `DOCKER_HOST`)
+- Terminal with 256-color support
+- Go 1.25+ (only for building from source)
 
-## Usage
+## Quick start
 
 ```bash
 docker-tui
 ```
 
-## Key Bindings
+Core workflow:
+1. Navigate with `j/k` (or arrow keys).
+2. Press `enter` to open container details.
+3. Use `s`, `R`, `d`, `e` for actions.
+4. Press `/` to filter, `i` for images, `v` for events, and `q` to quit.
+
+## Key bindings
 
 ### List view
 
@@ -59,18 +74,18 @@ docker-tui
 | `j` / `k` / `↑` / `↓` | Navigate |
 | `enter` / `l` | Open container detail |
 | `space` | Toggle multi-select |
-| `a` | Select / deselect all |
-| `s` | Start / stop container(s) |
-| `R` | Restart container(s) |
-| `d` | Remove container(s) (confirm) |
-| `e` | `docker exec -it` in new terminal |
+| `a` | Select/deselect all |
+| `s` | Start/stop selected container(s) |
+| `R` | Restart selected container(s) |
+| `d` | Remove selected container(s) |
+| `e` | Open `docker exec -it` in a new terminal |
 | `/` | Enter filter mode |
 | `C` | Clear filter |
 | `c` | Toggle compose grouping |
-| `i` | Images view |
-| `v` | Events view |
-| `t` | Theme picker |
-| `+` / `-` | Faster / slower refresh interval |
+| `i` | Open images view |
+| `v` | Open events view |
+| `t` | Open theme picker |
+| `+` / `-` | Adjust refresh interval |
 | `r` | Force refresh |
 | `q` | Quit |
 
@@ -81,21 +96,21 @@ docker-tui
 | `tab` / `→` | Next tab |
 | `shift+tab` / `←` | Previous tab |
 | `j` / `k` | Scroll |
-| `l` | Toggle live log stream (Logs tab) |
+| `l` | Toggle live logs (Logs tab) |
 | `x` | Reconnect embedded shell (Terminal tab) |
 | `ctrl+\` | Detach embedded shell |
-| `s` | Start / stop |
-| `R` | Restart |
-| `d` | Remove (confirm) |
-| `e` | `docker exec -it` in new terminal |
-| `t` | Theme picker |
+| `s` | Start/stop container |
+| `R` | Restart container |
+| `d` | Remove container |
+| `e` | Open `docker exec -it` in a new terminal |
+| `t` | Open theme picker |
 | `esc` | Back to list |
 
 ### Filter mode
 
 | Key | Action |
 |-----|--------|
-| type | Search by name / image / state |
+| type | Search by name/image/state |
 | `backspace` | Delete character |
 | `ctrl+u` | Clear filter |
 | `enter` / `esc` | Exit filter mode |
@@ -105,12 +120,12 @@ docker-tui
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Navigate |
-| `p` | Pull image (enter ref) |
-| `d` | Remove image (confirm) |
+| `p` | Pull image (enter reference) |
+| `d` | Remove image |
 | `r` | Refresh |
 | `esc` | Back |
 
-## Config
+## Configuration
 
 Config file: `~/.config/docker-tui/config.json`
 
@@ -125,34 +140,27 @@ Config file: `~/.config/docker-tui/config.json`
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `theme` | `"dark-green"` | Active theme name |
-| `refresh_seconds` | `3` | Container list refresh interval (1–30) |
-| `alert_cpu` | `80.0` | CPU % threshold for alert notification |
-| `alert_mem` | `80.0` | Memory % threshold for alert notification |
+| `theme` | `"dark-green"` | Active theme |
+| `refresh_seconds` | `3` | List refresh interval (1–30 sec) |
+| `alert_cpu` | `80.0` | CPU alert threshold (%) |
+| `alert_mem` | `80.0` | Memory alert threshold (%) |
 
 History cache: `~/.cache/docker-tui/history.json`
 
 ## Themes
 
-| Name | Style |
-|------|-------|
-| `dark-green` | Green on dark (default) |
-| `dracula` | Purple/pink dark |
-| `nord` | Arctic blue dark |
-| `gruvbox` | Warm retro dark |
-| `tokyo-night` | Blue/purple dark |
-| `catppuccin-mocha` | Soft lavender dark |
-| `catppuccin-latte` | Soft lavender light |
-| `rose-pine` | Muted rose dark |
-| `ayu-dark` | Orange/blue dark |
-| `monokai` | Classic green/pink dark |
+`dark-green`, `dracula`, `nord`, `gruvbox`, `tokyo-night`, `catppuccin-mocha`, `catppuccin-latte`, `rose-pine`, `ayu-dark`, `monokai`
 
-Switch theme at runtime with `t` → `j/k` → `enter`.
+Switch themes at runtime with `t` -> `j/k` -> `enter`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+## Security
+
+For responsible disclosure, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE)
+Licensed under the [MIT License](LICENSE).
