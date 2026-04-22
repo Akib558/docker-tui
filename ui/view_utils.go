@@ -105,6 +105,30 @@ func sanitizeOutputText(s string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
+func normalizeTerminalScroll(scroll, maxScroll int, follow bool) (int, bool) {
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if follow {
+		return maxScroll, true
+	}
+	if scroll < 0 {
+		return 0, false
+	}
+	if scroll >= maxScroll {
+		return maxScroll, true
+	}
+	return scroll, false
+}
+
+func detailPageStep(height int) int {
+	step := height / 3
+	if step < 3 {
+		return 3
+	}
+	return step
+}
+
 // ── Layout helpers ────────────────────────────────────────────────────────
 
 func interleave(items []string, spacer string) []string {
@@ -120,4 +144,3 @@ func interleave(items []string, spacer string) []string {
 	}
 	return result
 }
-

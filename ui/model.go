@@ -104,10 +104,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.terminalCancel = msg.cancel
 		m.terminalWriter = msg.writer
 		m.terminalActive = true
+		m.terminalFollow = true
 		m.terminalShell = msg.shell
 		if m.terminalOutput == "" {
 			m.terminalOutput = fmt.Sprintf("Connected to shell: %s\n", msg.shell)
 		}
+		m.syncTerminalScroll()
 		return m, msg.next
 
 	case terminalChunkMsg:
@@ -115,6 +117,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.terminalOutput) > terminalBufferMax {
 			m.terminalOutput = m.terminalOutput[len(m.terminalOutput)-terminalBufferMax:]
 		}
+		m.syncTerminalScroll()
 		if m.view == viewDetail && m.detailTab == tabTerminal && m.terminalActive {
 			return m, msg.next
 		}
@@ -211,7 +214,13 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		if m.view == viewDetail {
-			if m.detailScroll > 0 {
+			if m.detailTab == tabTerminal {
+				m.terminalFollow = false
+				if m.detailScroll > 0 {
+					m.detailScroll--
+				}
+				m.syncTerminalScroll()
+			} else if m.detailScroll > 0 {
 				m.detailScroll--
 			}
 		} else {
@@ -221,7 +230,14 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseButtonWheelDown:
 		if m.view == viewDetail {
-			m.detailScroll++
+			if m.detailTab == tabTerminal {
+				if !m.terminalFollow {
+					m.detailScroll++
+				}
+				m.syncTerminalScroll()
+			} else {
+				m.detailScroll++
+			}
 		} else {
 			if m.cursor < len(m.containers)-1 {
 				m.cursor++
@@ -339,6 +355,7 @@ func (m Model) openDetail(c docker.ContainerInfo) (tea.Model, tea.Cmd) {
 	m.terminalInput = ""
 	m.terminalOutput = ""
 	m.terminalShell = ""
+	m.terminalFollow = true
 	m.stopLogStreaming()
 	m.stopTerminalSession()
 	m.loading = true
@@ -562,6 +579,12 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.stopTerminalSession()
 			m.notify("Terminal detached", false)
 			return m, nil
+		case "x":
+			if m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
+				return m, m.startTerminal(m.inspected.ID)
+			}
+			m.terminalInput += "x"
+			return m, nil
 		case "enter":
 			if m.terminalActive {
 				line := m.terminalInput
@@ -599,11 +622,59 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailScroll = 0
 		return m.onTabSwitch()
 	case "up", "k":
+		if m.detailTab == tabTerminal {
+			m.terminalFollow = false
+		}
 		if m.detailScroll > 0 {
 			m.detailScroll--
 		}
+		if m.detailTab == tabTerminal {
+			m.syncTerminalScroll()
+		}
 	case "down", "j":
-		m.detailScroll++
+		if m.detailTab == tabTerminal {
+			if !m.terminalFollow {
+				m.detailScroll++
+			}
+			m.syncTerminalScroll()
+		} else {
+			m.detailScroll++
+		}
+	case "pgup":
+		step := detailPageStep(m.height)
+		if m.detailTab == tabTerminal {
+			m.terminalFollow = false
+		}
+		m.detailScroll = max(0, m.detailScroll-step)
+		if m.detailTab == tabTerminal {
+			m.syncTerminalScroll()
+		}
+	case "pgdown":
+		step := detailPageStep(m.height)
+		if m.detailTab == tabTerminal {
+			if !m.terminalFollow {
+				m.detailScroll += step
+			}
+			m.syncTerminalScroll()
+		} else {
+			m.detailScroll += step
+		}
+	case "home":
+		if m.detailTab == tabTerminal {
+			m.terminalFollow = false
+		}
+		m.detailScroll = 0
+		if m.detailTab == tabTerminal {
+			m.syncTerminalScroll()
+		}
+	case "end":
+		if m.detailTab == tabTerminal {
+			m.terminalFollow = true
+		}
+		m.detailScroll = 1 << 20
+		if m.detailTab == tabTerminal {
+			m.syncTerminalScroll()
+		}
 	case "s":
 		if m.inspected != nil {
 			if m.inspected.State == "running" {
@@ -640,10 +711,6 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, m.streamLogs(m.inspected.ID)
 			}
 		}
-	case "x":
-		if m.detailTab == tabTerminal && m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
-			return m, m.startTerminal(m.inspected.ID)
-		}
 	case "t":
 		m.dialog = dialogTheme
 	}
@@ -656,11 +723,30 @@ func (m Model) onTabSwitch() (tea.Model, tea.Cmd) {
 	}
 	if m.detailTab != tabTerminal {
 		m.stopTerminalSession()
+	} else {
+		m.terminalFollow = true
+		m.syncTerminalScroll()
 	}
 	if m.detailTab == tabTerminal && m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
 		return m, m.startTerminal(m.inspected.ID)
 	}
 	return m, nil
+}
+
+func (m *Model) syncTerminalScroll() {
+	if m.detailTab != tabTerminal || m.inspected == nil {
+		return
+	}
+	boxWidth := max(m.width-4, 30)
+	contentWidth := max(boxWidth-6, 24)
+	tabContent := m.renderTerminalTab(m.inspected, contentWidth)
+	lines := strings.Split(tabContent, "\n")
+	availHeight := m.height - 15
+	if availHeight < 5 {
+		availHeight = 5
+	}
+	maxScroll := max(0, len(lines)-availHeight)
+	m.detailScroll, m.terminalFollow = normalizeTerminalScroll(m.detailScroll, maxScroll, m.terminalFollow)
 }
 
 func (m *Model) handleContainerStateTransitions(prev []docker.ContainerInfo, next []docker.ContainerInfo) {
