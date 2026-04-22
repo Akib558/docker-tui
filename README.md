@@ -96,6 +96,7 @@ Core workflow:
 | `tab` / `→` | Next tab |
 | `shift+tab` / `←` | Previous tab |
 | `j` / `k` | Scroll |
+| `↑` / `↓` / `pgup` / `pgdn` | Scroll detail content (Terminal scrollback) |
 | `l` | Toggle live logs (Logs tab) |
 | `x` | Reconnect embedded shell (Terminal tab) |
 | `ctrl+\` | Detach embedded shell |
@@ -105,6 +106,8 @@ Core workflow:
 | `e` | Open `docker exec -it` in a new terminal |
 | `t` | Open theme picker |
 | `esc` | Back to list |
+
+Terminal tab auto-follows newest output by default and pauses follow mode when you scroll up.
 
 ### Filter mode
 

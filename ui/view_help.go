@@ -62,6 +62,8 @@ func (m Model) detailHelp(w int) string {
 		}
 	} else if m.detailTab == tabTerminal {
 		keys = []struct{ key, desc string }{
+			{"↑/↓", "scrollback"},
+			{"pgup/pgdn", "jump"},
 			{"type", "input"},
 			{"enter", "send"},
 			{"ctrl+\\", "detach"},

@@ -23,6 +23,8 @@ func (m Model) viewDetail() string {
 	var b strings.Builder
 	c := m.inspected
 	w := m.width
+	boxWidth := max(w-4, 30)
+	contentWidth := max(boxWidth-6, 24)
 
 	b.WriteString(m.renderHeader(w))
 
@@ -36,27 +38,9 @@ func (m Model) viewDetail() string {
 	identity := "  " + nameStr + dot + stateStr + dot + imgStr + dot + idStr
 	b.WriteString(identity + "\n\n")
 
-	tabNames := []string{"Info", "Resources", "Environment", "Logs", "Terminal"}
-	var tabRow strings.Builder
-	tabRow.WriteString("  ")
-	for i, t := range tabNames {
-		num := lipgloss.NewStyle().Foreground(colorDim).Render(fmt.Sprintf("%d:", i+1))
-		label := num + " " + t
-		if i == m.detailTab {
-			tabRow.WriteString(activeTabStyle.Render(label))
-		} else {
-			tabRow.WriteString(inactiveTabStyle.Render(label))
-		}
-		tabRow.WriteString("  ")
-	}
-	tabLine := tabRow.String()
-	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", w))
+	tabLine := m.renderDetailTabs(boxWidth)
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", boxWidth))
 	b.WriteString(tabLine + "\n" + sep + "\n")
-
-	contentWidth := w - 8
-	if contentWidth < 30 {
-		contentWidth = 30
-	}
 
 	var tabContent string
 	switch m.detailTab {
@@ -79,22 +63,52 @@ func (m Model) viewDetail() string {
 		availHeight = 5
 	}
 	maxScroll := max(0, len(lines)-availHeight)
-	if m.detailScroll > maxScroll {
-		m.detailScroll = maxScroll
+	scrollPos := m.detailScroll
+	followMode := m.terminalFollow
+	if m.detailTab == tabTerminal {
+		scrollPos, followMode = normalizeTerminalScroll(m.detailScroll, maxScroll, m.terminalFollow)
+	} else if scrollPos > maxScroll {
+		scrollPos = maxScroll
 	}
-	end := min(m.detailScroll+availHeight, len(lines))
-	visible := strings.Join(lines[m.detailScroll:end], "\n")
+	if scrollPos < 0 {
+		scrollPos = 0
+	}
+	end := min(scrollPos+availHeight, len(lines))
+	visible := strings.Join(lines[scrollPos:end], "\n")
 
-	box := detailBoxStyle.Width(w - 4).Render(visible)
+	box := detailBoxStyle.Width(boxWidth).Render(visible)
 	if len(lines) > availHeight {
-		box += lipgloss.NewStyle().Foreground(colorMuted).
-			Render(fmt.Sprintf(" (%d/%d)", m.detailScroll+1, maxScroll+1))
+		scrollLabel := fmt.Sprintf(" (%d/%d)", scrollPos+1, maxScroll+1)
+		if m.detailTab == tabTerminal {
+			mode := "PAUSED"
+			if followMode {
+				mode = "FOLLOW"
+			}
+			scrollLabel = fmt.Sprintf(" [%s] %d/%d", mode, scrollPos+1, maxScroll+1)
+		}
+		box += lipgloss.NewStyle().Foreground(colorMuted).Render(scrollLabel)
 	}
 	b.WriteString(box + "\n")
 
 	b.WriteString(m.renderNotification())
 	b.WriteString(m.detailHelp(w))
 	return b.String()
+}
+
+func (m Model) renderDetailTabs(width int) string {
+	tabNames := []string{"Info", "Resources", "Environment", "Logs", "Terminal"}
+	parts := make([]string, 0, len(tabNames))
+	for i, t := range tabNames {
+		num := lipgloss.NewStyle().Foreground(colorDim).Render(fmt.Sprintf("%d:", i+1))
+		label := num + " " + t
+		if i == m.detailTab {
+			parts = append(parts, activeTabStyle.Render(label))
+		} else {
+			parts = append(parts, inactiveTabStyle.Render(label))
+		}
+	}
+	row := lipgloss.JoinHorizontal(lipgloss.Bottom, interleave(parts, "  ")...)
+	return lipgloss.NewStyle().Width(width).Render(row)
 }
 
 // ── Info tab ────────────────────────────────────────────────────────────
@@ -404,12 +418,7 @@ func (m Model) renderTerminalTab(c *docker.ContainerInfo, width int) string {
 		out = "(no terminal output yet)"
 	}
 	lines := strings.Split(out, "\n")
-	show := lines
-	maxLines := max(6, m.height-20)
-	if len(lines) > maxLines {
-		show = lines[len(lines)-maxLines:]
-	}
-	for _, line := range show {
+	for _, line := range lines {
 		if lipgloss.Width(line) > width-4 {
 			line = truncate(line, width-4)
 		}

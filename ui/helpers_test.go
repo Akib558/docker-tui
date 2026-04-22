@@ -57,3 +57,58 @@ func TestSanitizeOutputText(t *testing.T) {
 		t.Fatalf("unexpected sanitized output:\nwant: %q\ngot:  %q", want, got)
 	}
 }
+
+func TestNormalizeTerminalScroll(t *testing.T) {
+	tests := []struct {
+		name       string
+		scroll     int
+		maxScroll  int
+		follow     bool
+		wantPos    int
+		wantFollow bool
+	}{
+		{
+			name:       "follow mode snaps to bottom",
+			scroll:     3,
+			maxScroll:  9,
+			follow:     true,
+			wantPos:    9,
+			wantFollow: true,
+		},
+		{
+			name:       "negative scroll clamps to zero",
+			scroll:     -2,
+			maxScroll:  8,
+			follow:     false,
+			wantPos:    0,
+			wantFollow: false,
+		},
+		{
+			name:       "reaching bottom resumes follow mode",
+			scroll:     12,
+			maxScroll:  10,
+			follow:     false,
+			wantPos:    10,
+			wantFollow: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPos, gotFollow := normalizeTerminalScroll(tt.scroll, tt.maxScroll, tt.follow)
+			if gotPos != tt.wantPos || gotFollow != tt.wantFollow {
+				t.Fatalf("normalizeTerminalScroll(%d, %d, %v) = (%d, %v), want (%d, %v)",
+					tt.scroll, tt.maxScroll, tt.follow, gotPos, gotFollow, tt.wantPos, tt.wantFollow)
+			}
+		})
+	}
+}
+
+func TestDetailPageStep(t *testing.T) {
+	if got := detailPageStep(6); got != 3 {
+		t.Fatalf("expected minimum page step 3, got %d", got)
+	}
+	if got := detailPageStep(30); got != 10 {
+		t.Fatalf("expected page step 10, got %d", got)
+	}
+}

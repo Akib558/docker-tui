@@ -81,6 +81,7 @@ type Model struct {
 	diff           []docker.DiffEntry
 	terminalInput  string
 	terminalOutput string
+	terminalFollow bool
 	terminalCancel func()
 	terminalWriter io.Writer
 	terminalActive bool
