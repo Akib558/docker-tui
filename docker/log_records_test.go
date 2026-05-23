@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -68,5 +69,41 @@ func TestDecodeDockerLogRecords_SkipsBlankLines(t *testing.T) {
 	}
 	if !got[1].Timestamp.Equal(wantTime2) || got[1].Message != "second message" {
 		t.Fatalf("unexpected second record: %+v", got[1])
+	}
+}
+
+func TestDecodeDockerLogRecords_AllowsLinesLargerThanOneMiB(t *testing.T) {
+	tsText := "2026-05-23T10:20:30Z"
+	largeMessage := strings.Repeat("x", 2*1024*1024)
+	raw := string([]byte{1, 0, 0, 0, 0, 0, 0, 0}) + tsText + " " + largeMessage + "\n"
+
+	got, err := DecodeDockerLogRecords(strings.NewReader(raw))
+	if err != nil {
+		t.Fatalf("DecodeDockerLogRecords returned error for large line: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 log record, got %d", len(got))
+	}
+	if got[0].Message != largeMessage {
+		t.Fatalf("unexpected large message length: want %d, got %d", len(largeMessage), len(got[0].Message))
+	}
+}
+
+func TestWriteDockerLogMessages_PreservesLegacyMessageOnlyOutput(t *testing.T) {
+	tsText := "2026-05-23T10:20:30Z"
+	input := strings.Join([]string{
+		string([]byte{1, 0, 0, 0, 0, 0, 0, 0}) + tsText + " first",
+		"",
+		string([]byte{2, 0, 0, 0, 0, 0, 0, 0}) + tsText + " second",
+		"plain",
+	}, "\n")
+
+	var out bytes.Buffer
+	if err := writeDockerLogMessages(strings.NewReader(input), &out); err != nil {
+		t.Fatalf("writeDockerLogMessages returned error: %v", err)
+	}
+
+	if out.String() != "first\n\nsecond\nplain\n" {
+		t.Fatalf("unexpected output: %q", out.String())
 	}
 }

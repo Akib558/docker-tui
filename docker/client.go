@@ -365,7 +365,21 @@ func (c *Client) GetContainerLogRecords(id string, lines int) ([]LogRecord, erro
 }
 
 func (c *Client) GetContainerLogsStream(ctx context.Context, id string) (io.ReadCloser, error) {
-	return c.GetContainerLogRecordsStream(ctx, id, 200)
+	reader, err := c.GetContainerLogRecordsStream(ctx, id, 200)
+	if err != nil {
+		return nil, err
+	}
+
+	pipeReader, pipeWriter := io.Pipe()
+	go func() {
+		defer reader.Close()
+		if writeErr := writeDockerLogMessages(reader, pipeWriter); writeErr != nil {
+			_ = pipeWriter.CloseWithError(writeErr)
+			return
+		}
+		_ = pipeWriter.Close()
+	}()
+	return pipeReader, nil
 }
 
 func (c *Client) GetContainerLogRecordsStream(ctx context.Context, id string, tail int) (io.ReadCloser, error) {
