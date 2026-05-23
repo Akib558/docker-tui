@@ -75,7 +75,9 @@ func SelectCentralLogTargets(containers []docker.ContainerInfo, selected map[str
 				targets = append(targets, target)
 			}
 		}
-		return targets
+		if len(targets) > 0 {
+			return targets
+		}
 	}
 	for _, c := range containers {
 		if c.State != "running" {
@@ -216,6 +218,15 @@ func (s *LogViewerState) ScrollBy(delta, height int) {
 	}
 	s.Scroll += delta
 	s.normalize(height)
+	if delta > 0 {
+		total := len(s.FilteredEntries())
+		if height < 1 {
+			height = 1
+		}
+		if total > 0 && s.Scroll >= max(0, total-height) {
+			s.Follow = true
+		}
+	}
 }
 
 func (s *LogViewerState) ScrollPage(delta, height int) {
@@ -235,16 +246,16 @@ func (s *LogViewerState) ScrollEnd() {
 }
 
 func (s *LogViewerState) normalize(height int) {
-	_, _, total := s.VisibleWindow(height)
+	if height < 1 {
+		height = 1
+	}
+	total := len(s.FilteredEntries())
 	maxScroll := max(0, total-height)
 	if s.Scroll < 0 {
 		s.Scroll = 0
 	}
-	if s.Scroll >= maxScroll {
+	if s.Scroll > maxScroll {
 		s.Scroll = maxScroll
-		if total > 0 {
-			s.Follow = true
-		}
 	}
 }
 

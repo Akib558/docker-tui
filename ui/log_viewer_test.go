@@ -37,6 +37,36 @@ func TestSelectCentralLogTargetsFallsBackToRunningContainers(t *testing.T) {
 	}
 }
 
+func TestSelectCentralLogTargetsFallsBackWhenSelectionIsStale(t *testing.T) {
+	containers := []docker.ContainerInfo{
+		{ID: "aaa111", Name: "api", State: "running"},
+		{ID: "bbb222", Name: "worker", State: "exited"},
+		{ID: "ccc333", Name: "db", State: "running"},
+	}
+	targets := SelectCentralLogTargets(containers, map[string]bool{"missing": true}, nil)
+	if len(targets) != 2 {
+		t.Fatalf("expected fallback to 2 running targets, got %d", len(targets))
+	}
+	if targets[0].ID != "aaa111" || targets[1].ID != "ccc333" {
+		t.Fatalf("unexpected fallback targets: %#v", targets)
+	}
+}
+
+func TestSelectCentralLogTargetsFallsBackWhenSelectionValuesAreFalse(t *testing.T) {
+	containers := []docker.ContainerInfo{
+		{ID: "aaa111", Name: "api", State: "running"},
+		{ID: "bbb222", Name: "worker", State: "exited"},
+		{ID: "ccc333", Name: "db", State: "running"},
+	}
+	targets := SelectCentralLogTargets(containers, map[string]bool{"aaa111": false, "ccc333": false}, nil)
+	if len(targets) != 2 {
+		t.Fatalf("expected fallback to 2 running targets, got %d", len(targets))
+	}
+	if targets[0].ID != "aaa111" || targets[1].ID != "ccc333" {
+		t.Fatalf("unexpected fallback targets: %#v", targets)
+	}
+}
+
 func TestResolveLogTargetColorPrecedence(t *testing.T) {
 	colors := map[string]string{
 		"abc123": "#111111",
@@ -102,6 +132,36 @@ func TestLogViewerScrollPauseAndResume(t *testing.T) {
 	viewer.ScrollEnd()
 	if !viewer.Follow {
 		t.Fatalf("end should resume follow")
+	}
+}
+
+func TestLogViewerScrollHomePausesWhenAllRowsFit(t *testing.T) {
+	viewer := NewLogViewerState(10, nil)
+	viewer.Append(
+		LogEntry{Message: "one", Sequence: 1},
+		LogEntry{Message: "two", Sequence: 2},
+	)
+	viewer.ScrollHome(5)
+	if viewer.Follow {
+		t.Fatalf("home should pause follow even when all rows fit")
+	}
+	if viewer.Scroll != 0 {
+		t.Fatalf("home should stay at top, got scroll=%d", viewer.Scroll)
+	}
+}
+
+func TestLogViewerScrollUpPausesWhenAllRowsFit(t *testing.T) {
+	viewer := NewLogViewerState(10, nil)
+	viewer.Append(
+		LogEntry{Message: "one", Sequence: 1},
+		LogEntry{Message: "two", Sequence: 2},
+	)
+	viewer.ScrollBy(-1, 5)
+	if viewer.Follow {
+		t.Fatalf("scrolling up should pause follow even when all rows fit")
+	}
+	if viewer.Scroll != 0 {
+		t.Fatalf("scrolling up without overflow should remain at top, got scroll=%d", viewer.Scroll)
 	}
 }
 
