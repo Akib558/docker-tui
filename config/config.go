@@ -140,8 +140,17 @@ func configPath() string {
 	return filepath.Join(home, ".config", "docker-tui", "config.json")
 }
 
+func cloneStringMap(src map[string]string) map[string]string {
+	dst := make(map[string]string, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
+}
+
 func Load() *Config {
 	cfg := Default
+	cfg.ContainerColors = cloneStringMap(Default.ContainerColors)
 	data, err := os.ReadFile(configPath())
 	if err != nil {
 		return &cfg
@@ -153,6 +162,7 @@ func Load() *Config {
 	if cfg.ContainerColors == nil {
 		cfg.ContainerColors = map[string]string{}
 	}
+	cfg.ContainerColors = cloneStringMap(cfg.ContainerColors)
 	return &cfg
 }
 
