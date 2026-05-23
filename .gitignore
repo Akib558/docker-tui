@@ -13,6 +13,8 @@ dist/
 /vendor/
 go.work
 go.work.sum
+.worktrees/
+worktrees/
 
 # OS
 .DS_Store
