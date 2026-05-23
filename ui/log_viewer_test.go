@@ -184,12 +184,23 @@ func TestLogViewerFilterMatchesNameAndMessage(t *testing.T) {
 func TestSortLogEntriesUsesTimestampThenSequence(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
 	entries := []LogEntry{
-		{Message: "second", Timestamp: now.Add(time.Second), Sequence: 1},
-		{Message: "first", Timestamp: now, Sequence: 2},
-		{Message: "third", Sequence: 3},
+		{Message: "timestamp seq 20", Timestamp: now, Sequence: 20},
+		{Message: "untimestamped seq 30", Sequence: 30},
+		{Message: "later timestamp", Timestamp: now.Add(time.Second), Sequence: 1},
+		{Message: "timestamp seq 10", Timestamp: now, Sequence: 10},
+		{Message: "untimestamped seq 10", Sequence: 10},
 	}
 	SortLogEntries(entries)
-	if entries[0].Message != "first" || entries[1].Message != "second" || entries[2].Message != "third" {
-		t.Fatalf("unexpected order: %#v", entries)
+	want := []string{
+		"timestamp seq 10",
+		"timestamp seq 20",
+		"later timestamp",
+		"untimestamped seq 10",
+		"untimestamped seq 30",
+	}
+	for i, wantMessage := range want {
+		if entries[i].Message != wantMessage {
+			t.Fatalf("entry %d = %q, want %q; order: %#v", i, entries[i].Message, wantMessage, entries)
+		}
 	}
 }
