@@ -10,6 +10,14 @@ func (m Model) logViewportHeight() int {
 	return height
 }
 
+func (m Model) detailLogContentRows() int {
+	rows := m.logViewportHeight() - 1
+	if rows < 1 {
+		return 1
+	}
+	return rows
+}
+
 func renderLogMessage(entry LogEntry, width int, showTag bool, targets map[string]LogTarget) string {
 	if width < 20 {
 		width = 20

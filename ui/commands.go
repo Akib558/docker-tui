@@ -117,6 +117,17 @@ func (m Model) streamLogs(id string) tea.Cmd {
 					return
 				}
 			}
+			if err := scanner.Err(); err != nil {
+				select {
+				case ch <- LogEntry{
+					ContainerID:   id,
+					ContainerName: name,
+					Message:       fmt.Sprintf("(log stream error: %v)", err),
+					System:        true,
+				}:
+				case <-ctx.Done():
+				}
+			}
 		}()
 
 		var readNext tea.Cmd

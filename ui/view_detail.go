@@ -375,7 +375,7 @@ func (m Model) renderLogsTab(width int) string {
 		mode = "PAUSED"
 	}
 	b.WriteString(sectionHeaderStyle.Width(width).Render("  Container Logs "+mode+liveIndicator) + "\n")
-	rows := m.logViewer.VisibleEntries(m.logViewportHeight() - 1)
+	rows := m.logViewer.VisibleEntries(m.detailLogContentRows())
 	if len(rows) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("  No logs available.") + "\n")
 		return b.String()

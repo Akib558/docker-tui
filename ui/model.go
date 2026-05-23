@@ -213,7 +213,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelUp:
 		if m.view == viewDetail {
 			if m.detailTab == tabLogs {
-				m.logViewer.ScrollBy(-1, m.logViewportHeight())
+				m.logViewer.ScrollBy(-1, m.detailLogContentRows())
 			} else if m.detailTab == tabTerminal {
 				m.terminalFollow = false
 				if m.detailScroll > 0 {
@@ -231,7 +231,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelDown:
 		if m.view == viewDetail {
 			if m.detailTab == tabLogs {
-				m.logViewer.ScrollBy(1, m.logViewportHeight())
+				m.logViewer.ScrollBy(1, m.detailLogContentRows())
 			} else if m.detailTab == tabTerminal {
 				if !m.terminalFollow {
 					m.detailScroll++
@@ -581,22 +581,22 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.detailTab == tabLogs {
-		height := m.logViewportHeight()
+		rows := m.detailLogContentRows()
 		switch msg.String() {
 		case "up", "k":
-			m.logViewer.ScrollBy(-1, height)
+			m.logViewer.ScrollBy(-1, rows)
 			return m, nil
 		case "down", "j":
-			m.logViewer.ScrollBy(1, height)
+			m.logViewer.ScrollBy(1, rows)
 			return m, nil
 		case "pgup":
-			m.logViewer.ScrollPage(-1, height)
+			m.logViewer.ScrollPage(-1, rows)
 			return m, nil
 		case "pgdown":
-			m.logViewer.ScrollPage(1, height)
+			m.logViewer.ScrollPage(1, rows)
 			return m, nil
 		case "home":
-			m.logViewer.ScrollHome(height)
+			m.logViewer.ScrollHome(rows)
 			return m, nil
 		case "end":
 			m.logViewer.ScrollEnd()

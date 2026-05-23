@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/akib558/docker-tui/docker"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestSelectCentralLogTargetsUsesSelectedContainers(t *testing.T) {
@@ -223,5 +224,52 @@ func TestSortLogEntriesUsesTimestampThenSequence(t *testing.T) {
 		if entries[i].Message != wantMessage {
 			t.Fatalf("entry %d = %q, want %q; order: %#v", i, entries[i].Message, wantMessage, entries)
 		}
+	}
+}
+
+func TestDetailLogsScrollMovesOneRenderedRow(t *testing.T) {
+	m := Model{
+		height:    20,
+		detailTab: tabLogs,
+		logViewer: NewLogViewerState(20, nil),
+	}
+	for i := 1; i <= 6; i++ {
+		m.logViewer.Append(LogEntry{Message: string(rune('0' + i)), Sequence: int64(i)})
+	}
+
+	model, _ := m.updateDetail(tea.KeyMsg{Type: tea.KeyHome})
+	moved, _ := model.(Model).updateDetail(tea.KeyMsg{Type: tea.KeyDown})
+	gotModel := moved.(Model)
+	rows := gotModel.logViewer.VisibleEntries(gotModel.logViewportHeight() - 1)
+
+	if gotModel.logViewer.Follow {
+		t.Fatalf("expected one-step down from home to remain paused")
+	}
+	if len(rows) == 0 || rows[0].Message != "2" {
+		t.Fatalf("expected first rendered row to move to message 2, got %#v", rows)
+	}
+}
+
+func TestDetailLogsMouseScrollMovesOneRenderedRow(t *testing.T) {
+	m := Model{
+		view:      viewDetail,
+		height:    20,
+		detailTab: tabLogs,
+		logViewer: NewLogViewerState(20, nil),
+	}
+	for i := 1; i <= 6; i++ {
+		m.logViewer.Append(LogEntry{Message: string(rune('0' + i)), Sequence: int64(i)})
+	}
+
+	m.logViewer.ScrollHome(m.logViewportHeight() - 1)
+	model, _ := m.handleMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	gotModel := model.(Model)
+	rows := gotModel.logViewer.VisibleEntries(gotModel.logViewportHeight() - 1)
+
+	if gotModel.logViewer.Follow {
+		t.Fatalf("expected one mouse-wheel step down from home to remain paused")
+	}
+	if len(rows) == 0 || rows[0].Message != "2" {
+		t.Fatalf("expected first rendered row to move to message 2, got %#v", rows)
 	}
 }
