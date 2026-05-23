@@ -95,6 +95,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.liveLogging = false
 		return m, nil
 
+	case centralLogTailMsg:
+		m.centralLogs.Append(msg.entries...)
+		SortLogEntries(m.centralLogs.Entries)
+		return m, nil
+
+	case centralLogStreamStartMsg:
+		m.centralLogCancels = append(m.centralLogCancels, msg.cancel)
+		return m, msg.next
+
+	case centralLogLineMsg:
+		m.centralLogs.Append(msg.entry)
+		SortLogEntries(m.centralLogs.Entries)
+		if m.view == viewLogs {
+			return m, msg.next
+		}
+		return m, nil
+
+	case centralLogStreamDoneMsg:
+		if msg.err != nil {
+			m.centralLogs.Append(systemLogEntry(msg.target, fmt.Sprintf("stream ended: %v", msg.err)))
+		}
+		return m, nil
+
 	case terminalStartMsg:
 		if m.terminalCancel != nil {
 			m.terminalCancel()
@@ -168,7 +191,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmds []tea.Cmd
 		cmds = append(cmds, tickCmd(m.refreshInterval))
 		if m.client != nil {
-			if m.view == viewList || m.view == viewDetail {
+			if m.view == viewList || m.view == viewDetail || m.view == viewLogs {
 				cmds = append(cmds, m.refreshContainers())
 			}
 			if !m.fetchStats {
@@ -201,6 +224,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateImages(msg)
 		case viewEvents:
 			return m.updateEvents(msg)
+		case viewLogs:
+			return m.updateCentralLogs(msg)
 		}
 	}
 	return m, nil
@@ -211,7 +236,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		if m.view == viewDetail {
+		if m.view == viewLogs {
+			m.centralLogs.ScrollBy(-1, m.centralLogViewportHeight())
+		} else if m.view == viewDetail {
 			if m.detailTab == tabLogs {
 				m.logViewer.ScrollBy(-1, m.detailLogContentRows())
 			} else if m.detailTab == tabTerminal {
@@ -229,7 +256,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.MouseButtonWheelDown:
-		if m.view == viewDetail {
+		if m.view == viewLogs {
+			m.centralLogs.ScrollBy(1, m.centralLogViewportHeight())
+		} else if m.view == viewDetail {
 			if m.detailTab == tabLogs {
 				m.logViewer.ScrollBy(1, m.detailLogContentRows())
 			} else if m.detailTab == tabTerminal {
@@ -318,6 +347,8 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.eventsCancel == nil {
 			return m, m.startEventStream()
 		}
+	case "L":
+		return m.openCentralLogs()
 	case "/":
 		m.filtering = true
 		m.filterText = ""
@@ -367,6 +398,30 @@ func (m Model) openDetail(c docker.ContainerInfo) (tea.Model, tea.Cmd) {
 	m.stopTerminalSession()
 	m.loading = true
 	return m, tea.Batch(m.inspectContainer(c.ID), m.fetchLogs(c.ID))
+}
+
+func (m Model) openCentralLogs() (tea.Model, tea.Cmd) {
+	targets := SelectCentralLogTargets(m.containers, m.selected, m.cfg.ContainerColors)
+	m.stopCentralLogStreaming()
+	m.centralLogTargets = targets
+	m.centralLogs = NewLogViewerState(centralLogBufferMax, targets)
+	m.centralLogFiltering = false
+	m.centralLogFilter = ""
+	m.view = viewLogs
+	if len(targets) == 0 {
+		m.centralLogs.Append(LogEntry{
+			Message: "No selected or running containers available.",
+			System:  true,
+		})
+		return m, nil
+	}
+	return m, tea.Batch(m.fetchCentralLogTails(targets), m.startCentralLogStreams(targets))
+}
+
+func (m Model) leaveCentralLogs() (tea.Model, tea.Cmd) {
+	m.stopCentralLogStreaming()
+	m.view = viewList
+	return m, nil
 }
 
 func (m Model) toggleStartStop() (tea.Model, tea.Cmd) {
@@ -760,6 +815,54 @@ func (m Model) onTabSwitch() (tea.Model, tea.Cmd) {
 	}
 	if m.detailTab == tabTerminal && m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
 		return m, m.startTerminal(m.inspected.ID)
+	}
+	return m, nil
+}
+
+func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.centralLogFiltering {
+		switch msg.String() {
+		case "esc", "enter":
+			m.centralLogFiltering = false
+		case "ctrl+u":
+			m.centralLogFilter = ""
+			m.centralLogs.SetFilter("")
+		case "backspace":
+			if len(m.centralLogFilter) > 0 {
+				m.centralLogFilter = m.centralLogFilter[:len(m.centralLogFilter)-1]
+				m.centralLogs.SetFilter(m.centralLogFilter)
+			}
+		default:
+			if len(msg.String()) == 1 {
+				m.centralLogFilter += msg.String()
+				m.centralLogs.SetFilter(m.centralLogFilter)
+			}
+		}
+		return m, nil
+	}
+
+	height := m.centralLogViewportHeight()
+	switch msg.String() {
+	case "esc", "h", "backspace":
+		return m.leaveCentralLogs()
+	case "q":
+		return m.quit()
+	case "/":
+		m.centralLogFiltering = true
+		m.centralLogFilter = ""
+		m.centralLogs.SetFilter("")
+	case "up", "k":
+		m.centralLogs.ScrollBy(-1, height)
+	case "down", "j":
+		m.centralLogs.ScrollBy(1, height)
+	case "pgup":
+		m.centralLogs.ScrollPage(-1, height)
+	case "pgdown":
+		m.centralLogs.ScrollPage(1, height)
+	case "home":
+		m.centralLogs.ScrollHome(height)
+	case "end":
+		m.centralLogs.ScrollEnd()
 	}
 	return m, nil
 }

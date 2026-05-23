@@ -283,6 +283,7 @@ func (m Model) execIntoContainerCmd(id string) tea.Cmd {
 
 func (m Model) quit() (tea.Model, tea.Cmd) {
 	m.stopLogStreaming()
+	m.stopCentralLogStreaming()
 	m.stopTerminalSession()
 	if m.eventsCancel != nil {
 		m.eventsCancel()

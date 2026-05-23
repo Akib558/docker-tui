@@ -20,6 +20,15 @@ func (m *Model) stopLogStreaming() {
 	m.liveLogging = false
 }
 
+func (m *Model) stopCentralLogStreaming() {
+	for _, cancel := range m.centralLogCancels {
+		if cancel != nil {
+			cancel()
+		}
+	}
+	m.centralLogCancels = nil
+}
+
 func (m *Model) stopTerminalSession() {
 	if m.terminalCancel != nil {
 		m.terminalCancel()

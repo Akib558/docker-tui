@@ -18,6 +18,7 @@ const (
 	viewDetail
 	viewImages
 	viewEvents
+	viewLogs
 )
 
 type dialogMode int
@@ -87,6 +88,13 @@ type Model struct {
 	terminalActive bool
 	terminalShell  string
 
+	// Centralized logs
+	centralLogs         LogViewerState
+	centralLogTargets   []LogTarget
+	centralLogCancels   []func()
+	centralLogFiltering bool
+	centralLogFilter    string
+
 	// Events streaming
 	eventsCtx    interface{} // unused field kept for future use
 	eventsCancel func()
@@ -152,13 +160,28 @@ type loadHistMsg struct {
 }
 type logLineMsg struct {
 	entry LogEntry
-	next tea.Cmd
+	next  tea.Cmd
 }
 type logStreamStartMsg struct {
 	cancel func()
 	next   tea.Cmd
 }
 type logStreamDoneMsg struct{}
+type centralLogTailMsg struct {
+	entries []LogEntry
+}
+type centralLogLineMsg struct {
+	entry LogEntry
+	next  tea.Cmd
+}
+type centralLogStreamStartMsg struct {
+	cancel func()
+	next   tea.Cmd
+}
+type centralLogStreamDoneMsg struct {
+	target LogTarget
+	err    error
+}
 type newEventMsg struct {
 	ev   docker.DockerEvent
 	next tea.Cmd

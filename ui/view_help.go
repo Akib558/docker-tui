@@ -25,6 +25,7 @@ func (m Model) helpCentered(w int) string {
 			{"s", "start/stop"},
 			{"R", "restart"},
 			{"d", "remove"},
+			{"L", "logs"},
 			{"esc/a", "deselect"},
 		}
 	} else {
@@ -35,6 +36,7 @@ func (m Model) helpCentered(w int) string {
 			{"/", "filter"},
 			{"s", "start/stop"},
 			{"e", "exec shell"},
+			{"L", "logs"},
 			{"i", "images"},
 			{"v", "events"},
 			{"t", "theme"},
@@ -42,6 +44,25 @@ func (m Model) helpCentered(w int) string {
 		}
 	}
 	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
+}
+
+func (m Model) centralLogsHelp(w int) string {
+	if m.centralLogFiltering {
+		return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys([]struct{ key, desc string }{
+			{"type", "filter logs"},
+			{"backspace", "delete"},
+			{"enter/esc", "done"},
+			{"ctrl+u", "clear"},
+		})))
+	}
+	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys([]struct{ key, desc string }{
+		{"j/k", "scroll"},
+		{"pgup/pgdn", "page"},
+		{"end", "follow"},
+		{"/", "filter"},
+		{"esc", "back"},
+		{"q", "quit"},
+	})))
 }
 
 // ── Detail help bar ──────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/akib558/docker-tui/config"
 	"github.com/akib558/docker-tui/docker"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -268,6 +269,120 @@ func TestDetailLogsMouseScrollMovesOneRenderedRow(t *testing.T) {
 
 	if gotModel.logViewer.Follow {
 		t.Fatalf("expected one mouse-wheel step down from home to remain paused")
+	}
+	if len(rows) == 0 || rows[0].Message != "2" {
+		t.Fatalf("expected first rendered row to move to message 2, got %#v", rows)
+	}
+}
+
+func TestUpdateListLKeyOpensCentralLogs(t *testing.T) {
+	m := Model{
+		cfg: &config.Config{
+			ContainerColors: map[string]string{},
+		},
+		containers: []docker.ContainerInfo{
+			{ID: "aaa111", Name: "api", State: "running"},
+			{ID: "bbb222", Name: "worker", State: "exited"},
+		},
+		selected: map[string]bool{
+			"bbb222": true,
+		},
+	}
+
+	model, cmd := m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'L'}})
+	got := model.(Model)
+
+	if got.view != viewLogs {
+		t.Fatalf("view = %v, want viewLogs", got.view)
+	}
+	if len(got.centralLogTargets) != 1 || got.centralLogTargets[0].ID != "bbb222" {
+		t.Fatalf("central targets = %#v, want selected container", got.centralLogTargets)
+	}
+	if cmd == nil {
+		t.Fatal("expected centralized logs commands to be scheduled")
+	}
+}
+
+func TestOpenCentralLogsNoTargetsShowsSystemMessage(t *testing.T) {
+	m := Model{
+		cfg: &config.Config{
+			ContainerColors: map[string]string{},
+		},
+		containers: []docker.ContainerInfo{
+			{ID: "aaa111", Name: "api", State: "exited"},
+		},
+	}
+
+	model, cmd := m.openCentralLogs()
+	got := model.(Model)
+	if got.view != viewLogs {
+		t.Fatalf("view = %v, want viewLogs", got.view)
+	}
+	if cmd != nil {
+		t.Fatal("expected no command when there are no selected or running targets")
+	}
+	if len(got.centralLogs.Entries) != 1 || !got.centralLogs.Entries[0].System {
+		t.Fatalf("expected one system entry, got %#v", got.centralLogs.Entries)
+	}
+}
+
+func TestCentralLogsFilterLifecycle(t *testing.T) {
+	m := Model{
+		view: viewLogs,
+		centralLogs: NewLogViewerState(20, []LogTarget{
+			{ID: "aaa111", Name: "api"},
+		}),
+	}
+	m.centralLogs.Append(
+		LogEntry{ContainerID: "aaa111", ContainerName: "api", Message: "GET /health", Sequence: 1},
+		LogEntry{ContainerID: "aaa111", ContainerName: "api", Message: "job failed", Sequence: 2},
+	)
+
+	model, _ := m.updateCentralLogs(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	filtering := model.(Model)
+	if !filtering.centralLogFiltering {
+		t.Fatal("expected / to enable central log filtering")
+	}
+
+	model, _ = filtering.updateCentralLogs(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	typed := model.(Model)
+	if typed.centralLogFilter != "f" || typed.centralLogs.Filter != "f" {
+		t.Fatalf("filter text = %q, viewer filter = %q", typed.centralLogFilter, typed.centralLogs.Filter)
+	}
+	if got := typed.centralLogs.FilteredEntries(); len(got) != 1 || got[0].Message != "job failed" {
+		t.Fatalf("filtered entries = %#v, want one failed row", got)
+	}
+
+	model, _ = typed.updateCentralLogs(tea.KeyMsg{Type: tea.KeyBackspace})
+	cleared := model.(Model)
+	if cleared.centralLogFilter != "" || cleared.centralLogs.Filter != "" {
+		t.Fatalf("filter should clear after backspace, got %q / %q", cleared.centralLogFilter, cleared.centralLogs.Filter)
+	}
+
+	model, _ = cleared.updateCentralLogs(tea.KeyMsg{Type: tea.KeyEsc})
+	done := model.(Model)
+	if done.centralLogFiltering {
+		t.Fatal("expected esc to exit central log filtering")
+	}
+}
+
+func TestCentralLogsMouseScrollMovesOneRenderedRow(t *testing.T) {
+	m := Model{
+		view:        viewLogs,
+		height:      13,
+		centralLogs: NewLogViewerState(20, nil),
+	}
+	for i := 1; i <= 8; i++ {
+		m.centralLogs.Append(LogEntry{Message: string(rune('0' + i)), Sequence: int64(i)})
+	}
+
+	m.centralLogs.ScrollHome(m.centralLogViewportHeight())
+	model, _ := m.handleMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	got := model.(Model)
+	rows := got.centralLogs.VisibleEntries(got.centralLogViewportHeight())
+
+	if got.centralLogs.Follow {
+		t.Fatalf("expected one wheel-down step from top to remain paused")
 	}
 	if len(rows) == 0 || rows[0].Message != "2" {
 		t.Fatalf("expected first rendered row to move to message 2, got %#v", rows)
