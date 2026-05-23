@@ -120,17 +120,19 @@ func ThemeIndex(name string) int {
 // ── Config ───────────────────────────────────────────────────────────────
 
 type Config struct {
-	Theme          string  `json:"theme"`
-	RefreshSeconds int     `json:"refresh_seconds"`
-	AlertCPU       float64 `json:"alert_cpu"`
-	AlertMem       float64 `json:"alert_mem"`
+	Theme           string            `json:"theme"`
+	RefreshSeconds  int               `json:"refresh_seconds"`
+	AlertCPU        float64           `json:"alert_cpu"`
+	AlertMem        float64           `json:"alert_mem"`
+	ContainerColors map[string]string `json:"container_colors"`
 }
 
 var Default = Config{
-	Theme:          "dark-green",
-	RefreshSeconds: 3,
-	AlertCPU:       80.0,
-	AlertMem:       80.0,
+	Theme:           "dark-green",
+	RefreshSeconds:  3,
+	AlertCPU:        80.0,
+	AlertMem:        80.0,
+	ContainerColors: map[string]string{},
 }
 
 func configPath() string {
@@ -147,6 +149,9 @@ func Load() *Config {
 	_ = json.Unmarshal(data, &cfg)
 	if cfg.RefreshSeconds < 1 {
 		cfg.RefreshSeconds = 1
+	}
+	if cfg.ContainerColors == nil {
+		cfg.ContainerColors = map[string]string{}
 	}
 	return &cfg
 }
