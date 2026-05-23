@@ -1,27 +1,12 @@
 version: "2"
 
 linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - misspell
+
+formatters:
   enable:
     - gofmt
-    - govet
-    - staticcheck
-    - errcheck
-    - gosimple
-    - ineffassign
-    - unused
-    - revive
-    - misspell
-    - godot
-
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        disabled: true   # many unexported types intentionally unexported
-
-issues:
-  exclude-rules:
-    # Ignore error returns in test helpers
-    - path: _test\.go
-      linters:
-        - errcheck

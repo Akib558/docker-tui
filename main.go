@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/akib/docker-tui/config"
-	"github.com/akib/docker-tui/ui"
+	"github.com/akib558/docker-tui/config"
+	"github.com/akib558/docker-tui/ui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

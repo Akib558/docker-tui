@@ -3,7 +3,7 @@ package ui
 import (
 	"strings"
 
-	"github.com/akib/docker-tui/config"
+	"github.com/akib558/docker-tui/config"
 	"github.com/charmbracelet/lipgloss"
 )
 

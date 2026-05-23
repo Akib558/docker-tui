@@ -31,9 +31,6 @@ Thumbs.db
 *.pem
 *.key
 
-# goreleaser
-.goreleaser.yaml
-
 # Coverage
 coverage.out
 coverage.html

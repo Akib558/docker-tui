@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 
-	"github.com/akib/docker-tui/docker"
+	"github.com/akib558/docker-tui/docker"
 )
 
 func (m *Model) checkAlerts(id string, s *docker.ContainerResourceStats) {

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/akib/docker-tui/docker"
+	"github.com/akib558/docker-tui/docker"
 )
 
 // ── KV rendering ─────────────────────────────────────────────────────────

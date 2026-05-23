@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/akib/docker-tui/config"
+	"github.com/akib558/docker-tui/config"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -27,44 +27,44 @@ var (
 // ── Style vars (rebuilt by rebuildStyles) ────────────────────────────────
 
 var (
-	titleStyle          lipgloss.Style
-	listHeaderStyle     lipgloss.Style
-	listItemStyle       lipgloss.Style
-	listItemSelStyle    lipgloss.Style
-	statusRunning       lipgloss.Style
-	statusStopped       lipgloss.Style
-	statusOther         lipgloss.Style
-	detailBoxStyle      lipgloss.Style
-	detailLabelStyle    lipgloss.Style
-	detailValueStyle    lipgloss.Style
-	sectionHeaderStyle  lipgloss.Style
-	activeTabStyle      lipgloss.Style
-	inactiveTabStyle    lipgloss.Style
-	helpBarStyle        lipgloss.Style
-	helpKeyStyle        lipgloss.Style
-	helpDescStyle       lipgloss.Style
-	notifySuccessStyle  lipgloss.Style
-	notifyErrorStyle    lipgloss.Style
-	tableHeaderStyle    lipgloss.Style
-	cursorStyle         lipgloss.Style
-	statCardBorder      lipgloss.Style
-	statCardLabel       lipgloss.Style
-	statCardValue       lipgloss.Style
-	dialogStyle         lipgloss.Style
-	dialogTitleStyle    lipgloss.Style
-	inputStyle          lipgloss.Style
-	statusBarStyle      lipgloss.Style
-	alertStyle          lipgloss.Style
-	filterBarStyle      lipgloss.Style
-	selectedMarkStyle   lipgloss.Style
-	dimOverlayStyle     lipgloss.Style
-	columnHeaderStyle   lipgloss.Style
-	eventTypeContainer  lipgloss.Style
-	eventTypeNetwork    lipgloss.Style
-	eventTypeVolume     lipgloss.Style
-	eventActionStart    lipgloss.Style
-	eventActionStop     lipgloss.Style
-	eventActionOther    lipgloss.Style
+	titleStyle         lipgloss.Style
+	listHeaderStyle    lipgloss.Style
+	listItemStyle      lipgloss.Style
+	listItemSelStyle   lipgloss.Style
+	statusRunning      lipgloss.Style
+	statusStopped      lipgloss.Style
+	statusOther        lipgloss.Style
+	detailBoxStyle     lipgloss.Style
+	detailLabelStyle   lipgloss.Style
+	detailValueStyle   lipgloss.Style
+	sectionHeaderStyle lipgloss.Style
+	activeTabStyle     lipgloss.Style
+	inactiveTabStyle   lipgloss.Style
+	helpBarStyle       lipgloss.Style
+	helpKeyStyle       lipgloss.Style
+	helpDescStyle      lipgloss.Style
+	notifySuccessStyle lipgloss.Style
+	notifyErrorStyle   lipgloss.Style
+	tableHeaderStyle   lipgloss.Style
+	cursorStyle        lipgloss.Style
+	statCardBorder     lipgloss.Style
+	statCardLabel      lipgloss.Style
+	statCardValue      lipgloss.Style
+	dialogStyle        lipgloss.Style
+	dialogTitleStyle   lipgloss.Style
+	inputStyle         lipgloss.Style
+	statusBarStyle     lipgloss.Style
+	alertStyle         lipgloss.Style
+	filterBarStyle     lipgloss.Style
+	selectedMarkStyle  lipgloss.Style
+	dimOverlayStyle    lipgloss.Style
+	columnHeaderStyle  lipgloss.Style
+	eventTypeContainer lipgloss.Style
+	eventTypeNetwork   lipgloss.Style
+	eventTypeVolume    lipgloss.Style
+	eventActionStart   lipgloss.Style
+	eventActionStop    lipgloss.Style
+	eventActionOther   lipgloss.Style
 )
 
 func init() {

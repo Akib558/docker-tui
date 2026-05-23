@@ -1,4 +1,4 @@
-module github.com/akib/docker-tui
+module github.com/akib558/docker-tui
 
 go 1.25.0
 

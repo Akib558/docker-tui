@@ -5,7 +5,7 @@ Thanks for your interest! Contributions are welcome.
 ## Development setup
 
 ```bash
-git clone https://github.com/akib/docker-tui
+git clone https://github.com/akib558/docker-tui
 cd docker-tui
 make build    # build binary
 make test     # run tests

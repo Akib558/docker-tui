@@ -2,7 +2,7 @@
 
 A fast, keyboard-first terminal UI for Docker. Monitor containers, inspect details, manage images, and follow events in one place.
 
-![CI](https://github.com/Akib558/docker-tui/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/akib558/docker-tui/actions/workflows/ci.yml/badge.svg)
 ![Go version](https://img.shields.io/badge/go-1.25%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -30,18 +30,18 @@ A fast, keyboard-first terminal UI for Docker. Monitor containers, inspect detai
 
 ### Pre-built binary (recommended)
 
-Download the latest release from [Releases](https://github.com/Akib558/docker-tui/releases).
+Download the latest release from [Releases](https://github.com/akib558/docker-tui/releases).
 
 ### `go install`
 
 ```bash
-go install github.com/akib/docker-tui@latest
+go install github.com/akib558/docker-tui@latest
 ```
 
 ### Build from source
 
 ```bash
-git clone https://github.com/Akib558/docker-tui
+git clone https://github.com/akib558/docker-tui
 cd docker-tui
 make build          # creates ./docker-tui
 make install        # installs to $GOPATH/bin
@@ -159,6 +159,14 @@ Switch themes at runtime with `t` -> `j/k` -> `enter`.
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+## Code of Conduct
+
+Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating in the community.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for notable project changes.
 
 ## Security
 

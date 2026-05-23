@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/akib/docker-tui/config"
-	"github.com/akib/docker-tui/docker"
+	"github.com/akib558/docker-tui/config"
+	"github.com/akib558/docker-tui/docker"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
