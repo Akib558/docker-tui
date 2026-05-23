@@ -75,7 +75,7 @@ type Model struct {
 	// Detail
 	detailScroll   int
 	detailTab      int
-	logLines       []string
+	logViewer      LogViewerState
 	logCancel      func()
 	liveLogging    bool
 	diff           []docker.DiffEntry
@@ -135,7 +135,7 @@ type containersMsg []docker.ContainerInfo
 type imagesMsg []docker.ImageInfo
 type errMsg struct{ err error }
 type inspectMsg struct{ info *docker.ContainerInfo }
-type logsMsg string
+type logsMsg []LogEntry
 type tickMsg time.Time
 type actionDoneMsg struct{ action, name string }
 type statsMsg struct {
@@ -151,7 +151,7 @@ type loadHistMsg struct {
 	mem map[string][]float64
 }
 type logLineMsg struct {
-	line string
+	entry LogEntry
 	next tea.Cmd
 }
 type logStreamStartMsg struct {

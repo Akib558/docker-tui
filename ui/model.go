@@ -75,7 +75,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case logsMsg:
-		m.logLines = strings.Split(cleanDockerLogs(string(msg)), "\n")
+		m.logViewer = NewLogViewerState(detailLogBufferMax, nil)
+		m.logViewer.Append([]LogEntry(msg)...)
 		return m, nil
 
 	case logStreamStartMsg:
@@ -84,10 +85,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, msg.next
 
 	case logLineMsg:
-		m.logLines = append(m.logLines, msg.line)
-		if len(m.logLines) > 500 {
-			m.logLines = m.logLines[len(m.logLines)-500:]
-		}
+		m.logViewer.Append(msg.entry)
 		if m.view == viewDetail && m.detailTab == tabLogs && m.liveLogging {
 			return m, msg.next
 		}
@@ -214,7 +212,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		if m.view == viewDetail {
-			if m.detailTab == tabTerminal {
+			if m.detailTab == tabLogs {
+				m.logViewer.ScrollBy(-1, m.logViewportHeight())
+			} else if m.detailTab == tabTerminal {
 				m.terminalFollow = false
 				if m.detailScroll > 0 {
 					m.detailScroll--
@@ -230,7 +230,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseButtonWheelDown:
 		if m.view == viewDetail {
-			if m.detailTab == tabTerminal {
+			if m.detailTab == tabLogs {
+				m.logViewer.ScrollBy(1, m.logViewportHeight())
+			} else if m.detailTab == tabTerminal {
 				if !m.terminalFollow {
 					m.detailScroll++
 				}
@@ -350,7 +352,12 @@ func (m Model) openDetail(c docker.ContainerInfo) (tea.Model, tea.Cmd) {
 	m.view = viewDetail
 	m.detailScroll = 0
 	m.detailTab = tabInfo
-	m.logLines = nil
+	m.logViewer = NewLogViewerState(detailLogBufferMax, []LogTarget{{
+		ID:    c.ID,
+		Name:  c.Name,
+		State: c.State,
+		Color: ResolveLogTargetColor(m.cfg.ContainerColors, LogTarget{ID: c.ID, Name: c.Name, State: c.State}),
+	}})
 	m.diff = nil
 	m.terminalInput = ""
 	m.terminalOutput = ""
@@ -573,6 +580,30 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ── Detail ──────────────────────────────────────────────────────────────
 
 func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.detailTab == tabLogs {
+		height := m.logViewportHeight()
+		switch msg.String() {
+		case "up", "k":
+			m.logViewer.ScrollBy(-1, height)
+			return m, nil
+		case "down", "j":
+			m.logViewer.ScrollBy(1, height)
+			return m, nil
+		case "pgup":
+			m.logViewer.ScrollPage(-1, height)
+			return m, nil
+		case "pgdown":
+			m.logViewer.ScrollPage(1, height)
+			return m, nil
+		case "home":
+			m.logViewer.ScrollHome(height)
+			return m, nil
+		case "end":
+			m.logViewer.ScrollEnd()
+			return m, nil
+		}
+	}
+
 	if m.detailTab == tabTerminal {
 		switch msg.String() {
 		case "ctrl+\\":

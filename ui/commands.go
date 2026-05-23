@@ -1,11 +1,11 @@
 package ui
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os/exec"
-	"strings"
 
 	"github.com/akib558/docker-tui/config"
 	"github.com/akib558/docker-tui/docker"
@@ -62,52 +62,59 @@ func (m Model) inspectContainer(id string) tea.Cmd {
 
 func (m Model) fetchLogs(id string) tea.Cmd {
 	return func() tea.Msg {
-		logs, err := m.client.GetContainerLogs(id, 100)
+		records, err := m.client.GetContainerLogRecords(id, 100)
 		if err != nil {
-			return logsMsg("(unable to fetch logs)")
+			return logsMsg{{Message: "(unable to fetch logs)", System: true}}
 		}
-		return logsMsg(logs)
+		entries := make([]LogEntry, 0, len(records))
+		name := ""
+		if m.inspected != nil {
+			name = m.inspected.Name
+		}
+		for _, record := range records {
+			entries = append(entries, LogEntry{
+				ContainerID:   id,
+				ContainerName: name,
+				Timestamp:     record.Timestamp,
+				Message:       record.Message,
+			})
+		}
+		SortLogEntries(entries)
+		return logsMsg(entries)
 	}
 }
 
 func (m Model) streamLogs(id string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
-		ch := make(chan string, 200)
+		ch := make(chan LogEntry, 200)
+		name := ""
+		if m.inspected != nil {
+			name = m.inspected.Name
+		}
 
 		go func() {
 			defer close(ch)
-			reader, err := m.client.GetContainerLogsStream(ctx, id)
+			reader, err := m.client.GetContainerLogRecordsStream(ctx, id, 0)
 			if err != nil {
 				cancel()
 				return
 			}
 			defer reader.Close()
-			buf := make([]byte, 4096)
-			var partial string
-			for {
-				n, err := reader.Read(buf)
-				if n > 0 {
-					data := partial + string(buf[:n])
-					lines := strings.Split(data, "\n")
-					for i, line := range lines {
-						if i == len(lines)-1 {
-							partial = line
-						} else {
-							// Strip Docker log header (8 bytes)
-							if len(line) > 8 && (line[0] == 1 || line[0] == 2) {
-								line = line[8:]
-							}
-							select {
-							case ch <- line:
-							case <-ctx.Done():
-								return
-							}
-						}
-					}
+			scanner := bufio.NewScanner(reader)
+			scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				record := docker.ParseDockerLogRecord(scanner.Text())
+				entry := LogEntry{
+					ContainerID:   id,
+					ContainerName: name,
+					Timestamp:     record.Timestamp,
+					Message:       record.Message,
 				}
-				if err != nil {
-					break
+				select {
+				case ch <- entry:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
@@ -118,7 +125,7 @@ func (m Model) streamLogs(id string) tea.Cmd {
 			if !ok {
 				return logStreamDoneMsg{}
 			}
-			return logLineMsg{line: line, next: readNext}
+			return logLineMsg{entry: line, next: readNext}
 		}
 		return logStreamStartMsg{cancel: cancel, next: readNext}
 	}

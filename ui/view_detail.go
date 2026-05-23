@@ -365,29 +365,23 @@ func (m Model) renderEnvTab(c *docker.ContainerInfo, width int) string {
 // ── Logs tab ────────────────────────────────────────────────────────────
 
 func (m Model) renderLogsTab(width int) string {
-	if len(m.logLines) == 0 {
-		return lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("  No logs available.")
-	}
-
-	cleaned := sanitizeOutputText(strings.Join(m.logLines, "\n"))
-	if cleaned == "" {
-		return lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("  No logs available.")
-	}
-
 	var b strings.Builder
 	liveIndicator := ""
 	if m.liveLogging {
 		liveIndicator = " " + lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("● LIVE")
 	}
-	b.WriteString(sectionHeaderStyle.Width(width).Render("  Container Logs"+liveIndicator) + "\n")
-
-	for _, line := range strings.Split(cleaned, "\n") {
-		if len(line) > width-4 {
-			line = line[:width-4]
-		}
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSubtext).Render(line) + "\n")
+	mode := "FOLLOW"
+	if !m.logViewer.Follow {
+		mode = "PAUSED"
+	}
+	b.WriteString(sectionHeaderStyle.Width(width).Render("  Container Logs "+mode+liveIndicator) + "\n")
+	rows := m.logViewer.VisibleEntries(m.logViewportHeight() - 1)
+	if len(rows) == 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("  No logs available.") + "\n")
+		return b.String()
+	}
+	for _, entry := range rows {
+		b.WriteString(renderLogMessage(entry, width, false, m.logViewer.Targets) + "\n")
 	}
 	return b.String()
 }

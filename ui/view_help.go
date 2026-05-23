@@ -56,6 +56,8 @@ func (m Model) detailHelp(w int) string {
 		keys = []struct{ key, desc string }{
 			{"tab/←/→", "switch tab"},
 			{"j/k", "scroll"},
+			{"pgup/pgdn", "jump"},
+			{"home/end", "top/bottom"},
 			{"l", live},
 			{"s", "start/stop"},
 			{"esc", "back"},

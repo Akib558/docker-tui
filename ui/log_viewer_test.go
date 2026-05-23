@@ -181,6 +181,27 @@ func TestLogViewerFilterMatchesNameAndMessage(t *testing.T) {
 	}
 }
 
+func TestLogViewerVisibleEntriesUsesFilterAndScroll(t *testing.T) {
+	viewer := NewLogViewerState(10, nil)
+	viewer.Append(
+		LogEntry{Message: "alpha", Sequence: 1},
+		LogEntry{Message: "beta", Sequence: 2},
+		LogEntry{Message: "gamma", Sequence: 3},
+		LogEntry{Message: "delta", Sequence: 4},
+	)
+	viewer.SetFilter("a")
+	viewer.ScrollHome(2)
+	got := viewer.VisibleEntries(2)
+	if len(got) != 2 || got[0].Message != "alpha" || got[1].Message != "beta" {
+		t.Fatalf("visible filtered rows = %#v", got)
+	}
+	viewer.ScrollEnd()
+	got = viewer.VisibleEntries(2)
+	if len(got) != 2 || got[0].Message != "gamma" || got[1].Message != "delta" {
+		t.Fatalf("visible follow rows = %#v", got)
+	}
+}
+
 func TestSortLogEntriesUsesTimestampThenSequence(t *testing.T) {
 	now := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
 	entries := []LogEntry{
