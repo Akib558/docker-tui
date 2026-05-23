@@ -18,6 +18,7 @@ A fast, keyboard-first terminal UI for Docker. Monitor containers, inspect detai
 
 - Container list with live CPU/memory bars, filter, multi-select, and compose grouping
 - Detail view with tabs for info, resources, environment, logs, and terminal
+- Centralized live logs across selected or running containers with stable colored labels
 - Images view for listing, pulling, and removing images
 - Real-time Docker events stream with action highlighting
 - Host dashboard with system memory and load averages
@@ -79,6 +80,7 @@ Core workflow:
 | `R` | Restart selected container(s) |
 | `d` | Remove selected container(s) |
 | `e` | Open `docker exec -it` in a new terminal |
+| `L` | Open centralized logs for selected containers, or all running containers |
 | `/` | Enter filter mode |
 | `C` | Clear filter |
 | `c` | Toggle compose grouping |
@@ -95,8 +97,8 @@ Core workflow:
 |-----|--------|
 | `tab` / `→` | Next tab |
 | `shift+tab` / `←` | Previous tab |
-| `j` / `k` | Scroll |
-| `↑` / `↓` / `pgup` / `pgdn` | Scroll detail content (Terminal scrollback) |
+| `j` / `k` / `↑` / `↓` / `pgup` / `pgdn` | Scroll logs or terminal output |
+| `home` / `end` | Jump to top/newest output; `end` resumes follow mode |
 | `l` | Toggle live logs (Logs tab) |
 | `x` | Reconnect embedded shell (Terminal tab) |
 | `ctrl+\` | Detach embedded shell |
@@ -108,6 +110,20 @@ Core workflow:
 | `esc` | Back to list |
 
 Terminal tab auto-follows newest output by default and pauses follow mode when you scroll up.
+
+### Centralized logs view
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` / `↑` / `↓` | Scroll |
+| `pgup` / `pgdn` | Page scroll |
+| `home` / `end` | Jump to oldest/newest; `end` resumes follow mode |
+| `/` | Filter by container name or message |
+| `ctrl+u` | Clear filter while filtering |
+| `esc` | Exit filter mode or return to list |
+| `q` | Quit |
+
+Open centralized logs with `L` from the list. If containers are selected, docker-tui follows those containers; otherwise it follows all running containers. Scrolling up pauses follow mode. Scrolling to the bottom or pressing `end` resumes follow mode.
 
 ### Filter mode
 
@@ -137,7 +153,11 @@ Config file: `~/.config/docker-tui/config.json`
   "theme": "dark-green",
   "refresh_seconds": 3,
   "alert_cpu": 80.0,
-  "alert_mem": 80.0
+  "alert_mem": 80.0,
+  "container_colors": {
+    "api": "#00E676",
+    "worker": "#7AA2F7"
+  }
 }
 ```
 
@@ -147,6 +167,7 @@ Config file: `~/.config/docker-tui/config.json`
 | `refresh_seconds` | `3` | List refresh interval (1–30 sec) |
 | `alert_cpu` | `80.0` | CPU alert threshold (%) |
 | `alert_mem` | `80.0` | Memory alert threshold (%) |
+| `container_colors` | `{}` | Stable color overrides by exact container ID, exact name, or ID prefix |
 
 History cache: `~/.cache/docker-tui/history.json`
 
