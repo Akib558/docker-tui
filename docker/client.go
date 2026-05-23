@@ -329,6 +329,19 @@ func (c *Client) StopContainer(id string) error {
 }
 
 func (c *Client) GetContainerLogs(id string, lines int) (string, error) {
+	records, err := c.GetContainerLogRecords(id, lines)
+	if err != nil {
+		return "", err
+	}
+
+	messages := make([]string, 0, len(records))
+	for _, record := range records {
+		messages = append(messages, record.Message)
+	}
+	return strings.Join(messages, "\n"), nil
+}
+
+func (c *Client) GetContainerLogRecords(id string, lines int) ([]LogRecord, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -337,32 +350,31 @@ func (c *Client) GetContainerLogs(id string, lines int) (string, error) {
 		ShowStdout: true,
 		ShowStderr: true,
 		Tail:       tail,
+		Timestamps: true,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get logs: %w", err)
+		return nil, fmt.Errorf("failed to get logs: %w", err)
 	}
 	defer reader.Close()
 
-	buf := make([]byte, 64*1024)
-	var result strings.Builder
-	for {
-		n, readErr := reader.Read(buf)
-		if n > 0 {
-			result.Write(buf[:n])
-		}
-		if readErr != nil {
-			break
-		}
+	records, err := DecodeDockerLogRecords(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode logs: %w", err)
 	}
-	return result.String(), nil
+	return records, nil
 }
 
 func (c *Client) GetContainerLogsStream(ctx context.Context, id string) (io.ReadCloser, error) {
+	return c.GetContainerLogRecordsStream(ctx, id, 200)
+}
+
+func (c *Client) GetContainerLogRecordsStream(ctx context.Context, id string, tail int) (io.ReadCloser, error) {
 	return c.cli.ContainerLogs(ctx, id, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
-		Tail:       "200",
+		Tail:       fmt.Sprintf("%d", tail),
+		Timestamps: true,
 	})
 }
 

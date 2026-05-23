@@ -17,7 +17,9 @@ type ClientAPI interface {
 	RemoveContainer(id string, force bool) error
 	GetContainerDiff(id string) ([]DiffEntry, error)
 	GetContainerLogs(id string, lines int) (string, error)
+	GetContainerLogRecords(id string, lines int) ([]LogRecord, error)
 	GetContainerLogsStream(ctx context.Context, id string) (io.ReadCloser, error)
+	GetContainerLogRecordsStream(ctx context.Context, id string, tail int) (io.ReadCloser, error)
 	StartContainerExecShell(ctx context.Context, id, shell string) (io.ReadWriteCloser, error)
 
 	// Stats

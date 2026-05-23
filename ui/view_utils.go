@@ -56,11 +56,7 @@ func formatPortsSummary(ports []docker.PortBinding) string {
 func cleanDockerLogs(s string) string {
 	var cleaned strings.Builder
 	for _, line := range strings.Split(s, "\n") {
-		if len(line) > 8 {
-			if line[0] == 1 || line[0] == 2 {
-				line = line[8:]
-			}
-		}
+		line = docker.StripDockerLogHeaderForUI(line)
 		cleaned.WriteString(line + "\n")
 	}
 	return strings.TrimRight(sanitizeOutputText(cleaned.String()), "\n")
