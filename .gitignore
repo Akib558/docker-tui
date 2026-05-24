@@ -5,6 +5,7 @@ dist/
 
 # Build artifacts
 *.exe
+*.deb
 *.test
 *.out
 *.prof
