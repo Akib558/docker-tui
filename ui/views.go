@@ -25,6 +25,8 @@ func (m Model) View() string {
 		content = m.viewEvents()
 	case viewLogs:
 		content = m.viewCentralLogs()
+	case viewVolumes:
+		content = m.viewVolumes()
 	}
 
 	// Pad to full terminal height to prevent flicker
