@@ -574,6 +574,21 @@ func (m Model) filteredContainers() []docker.ContainerInfo {
 	return out
 }
 
+func (m Model) filteredVolumes() []docker.VolumeInfo {
+	if m.filterText == "" {
+		return m.volumes
+	}
+	q := strings.ToLower(m.filterText)
+	var out []docker.VolumeInfo
+	for _, vol := range m.volumes {
+		if strings.Contains(strings.ToLower(vol.Name), q) ||
+			strings.Contains(strings.ToLower(vol.Driver), q) {
+			out = append(out, vol)
+		}
+	}
+	return out
+}
+
 func (m Model) selectedContainer() *docker.ContainerInfo {
 	fc := m.filteredContainers()
 	if len(fc) == 0 || m.cursor < 0 || m.cursor >= len(fc) {
