@@ -53,6 +53,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case volumesMsg:
+		m.volumes = []docker.VolumeInfo(msg)
+		m.loading = false
+		return m, nil
+
 	case statsMsg:
 		m.fetchStats = false
 		m.stats = msg.stats
@@ -180,6 +185,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.notify(fmt.Sprintf("%s: %s", msg.action, msg.name), false)
 		return m, m.fetchImages()
 
+	case volumeActionDoneMsg:
+		m.notify(fmt.Sprintf("%s: %s", msg.action, msg.name), false)
+		return m, m.fetchVolumes()
+
 	case execDoneMsg:
 		if msg.err != nil {
 			m.notify(fmt.Sprintf("Exec error: %v", msg.err), true)
@@ -226,6 +235,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateEvents(msg)
 		case viewLogs:
 			return m.updateCentralLogs(msg)
+		case viewVolumes:
+			return m.updateVolumes(msg)
 		}
 	}
 	return m, nil
@@ -974,5 +985,15 @@ func (m Model) updateEvents(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor++
 		}
 	}
+	return m, nil
+}
+
+// ── Volumes ─────────────────────────────────────────────────────────────
+
+func (m Model) fetchVolumes() tea.Cmd {
+	return nil
+}
+
+func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }

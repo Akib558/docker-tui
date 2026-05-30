@@ -19,6 +19,7 @@ const (
 	viewImages
 	viewEvents
 	viewLogs
+	viewVolumes
 )
 
 type dialogMode int
@@ -53,6 +54,8 @@ type Model struct {
 	inspected  *docker.ContainerInfo
 	images     []docker.ImageInfo
 	events     []docker.DockerEvent
+	volumes    []docker.VolumeInfo
+	volCursor  int
 
 	// Stats
 	stats      map[string]*docker.ContainerResourceStats
@@ -153,6 +156,8 @@ type statsMsg struct {
 }
 type diffMsg []docker.DiffEntry
 type imageActionDoneMsg struct{ action, name string }
+type volumesMsg []docker.VolumeInfo
+type volumeActionDoneMsg struct{ action, name string }
 type execDoneMsg struct{ err error }
 type loadHistMsg struct {
 	cpu map[string][]float64
