@@ -1001,5 +1001,87 @@ func (m Model) fetchVolumes() tea.Cmd {
 }
 
 func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "h":
+		m.view = viewList
+	case "up", "k":
+		if m.volCursor > 0 {
+			m.volCursor--
+		}
+	case "down", "j":
+		if m.volCursor < len(m.volumes)-1 {
+			m.volCursor++
+		}
+	case "home", "g":
+		m.volCursor = 0
+	case "end", "G":
+		if n := len(m.volumes); n > 0 {
+			m.volCursor = n - 1
+		}
+	case " ":
+		if m.volCursor < len(m.volumes) {
+			name := m.volumes[m.volCursor].Name
+			if m.selected[name] {
+				delete(m.selected, name)
+			} else {
+				m.selected[name] = true
+			}
+		}
+	case "a":
+		if len(m.selected) > 0 {
+			m.selected = make(map[string]bool)
+		} else {
+			for _, vol := range m.volumes {
+				m.selected[vol.Name] = true
+			}
+		}
+	case "d":
+		return m.confirmRemoveVolumes()
+	case "p":
+		return m.confirmPruneVolumes()
+	case "/":
+		m.filtering = true
+		m.filterText = ""
+	case "ctrl+u":
+		m.filterText = ""
+		m.volCursor = 0
+	case "r":
+		m.loading = true
+		return m, m.fetchVolumes()
+	case "t":
+		m.dialog = dialogTheme
+	}
+	return m, nil
+}
+
+func (m Model) confirmRemoveVolumes() (tea.Model, tea.Cmd) {
+	if len(m.selected) == 0 && m.volCursor < len(m.volumes) {
+		m.selected[m.volumes[m.volCursor].Name] = true
+	}
+	if len(m.selected) == 0 {
+		return m, nil
+	}
+	names := make([]string, 0, len(m.selected))
+	for name := range m.selected {
+		names = append(names, name)
+	}
+	msg := fmt.Sprintf("Remove %d volume(s)?\n\n  %s\n\nThis cannot be undone.", len(names), strings.Join(names, ", "))
+	m.dialog = dialogConfirm
+	m.confirmMsg = msg
+	m.confirmOK = func() tea.Msg {
+		var cmds []tea.Cmd
+		for name := range m.selected {
+			cmds = append(cmds, m.removeVolume(name))
+		}
+		m.selected = make(map[string]bool)
+		return tea.Batch(cmds...)
+	}
+	return m, nil
+}
+
+func (m Model) confirmPruneVolumes() (tea.Model, tea.Cmd) {
+	m.dialog = dialogConfirm
+	m.confirmMsg = "Remove all orphaned volumes?\n\nThis cannot be undone."
+	m.confirmOK = func() tea.Msg { return m.pruneVolumesCmd() }
 	return m, nil
 }
