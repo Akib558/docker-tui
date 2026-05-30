@@ -30,3 +30,26 @@ func TestClient_ListVolumes(t *testing.T) {
 	}
 	_ = vols
 }
+
+func TestClient_RemoveVolume(t *testing.T) {
+	c, err := NewClient()
+	if err != nil {
+		t.Skip("docker not available")
+	}
+	err = c.RemoveVolume("nonexistent-volume-12345")
+	if err == nil {
+		t.Error("expected error when removing nonexistent volume")
+	}
+}
+
+func TestClient_PruneVolumes(t *testing.T) {
+	c, err := NewClient()
+	if err != nil {
+		t.Skip("docker not available")
+	}
+	deleted, err := c.PruneVolumes()
+	if err != nil {
+		t.Fatalf("PruneVolumes failed: %v", err)
+	}
+	t.Logf("Pruned %d volumes", len(deleted))
+}
