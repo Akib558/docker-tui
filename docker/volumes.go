@@ -3,9 +3,10 @@ package docker
 import (
 	"context"
 	"fmt"
-
-	"github.com/docker/docker/api/types/volume"
 	"time"
+
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/volume"
 )
 
 type VolumeInfo struct {
@@ -19,6 +20,23 @@ type VolumeInfo struct {
 
 func (v VolumeInfo) DisplayName() string {
 	return v.Name
+}
+
+func (c *Client) RemoveVolume(name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return c.cli.VolumeRemove(ctx, name, false)
+}
+
+func (c *Client) PruneVolumes() ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := c.cli.VolumesPrune(ctx, filters.NewArgs())
+	if err != nil {
+		return nil, fmt.Errorf("failed to prune volumes: %w", err)
+	}
+	return resp.VolumesDeleted, nil
 }
 
 func (c *Client) ListVolumes() ([]VolumeInfo, error) {
