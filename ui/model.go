@@ -354,10 +354,10 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, m.fetchImages()
 	case "v":
-		m.view = viewEvents
-		if m.eventsCancel == nil {
-			return m, m.startEventStream()
-		}
+		m.view = viewVolumes
+		m.volCursor = 0
+		m.loading = true
+		return m, m.fetchVolumes()
 	case "L":
 		return m.openCentralLogs()
 	case "/":
