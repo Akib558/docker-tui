@@ -12,8 +12,13 @@ func (m Model) viewVolumes() string {
 	w := m.width
 
 	b.WriteString(m.renderHeader(w))
-	b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).
-		Render(fmt.Sprintf("Volumes  (%d)", len(m.volumes))) + "\n\n")
+	var title string
+	if len(m.selected) > 0 {
+		title = fmt.Sprintf("Volumes  (%d)  ◈ %d selected", len(m.volumes), len(m.selected))
+	} else {
+		title = fmt.Sprintf("Volumes  (%d)", len(m.volumes))
+	}
+	b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(title) + "\n\n")
 
 	if m.loading {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
@@ -57,10 +62,19 @@ func (m Model) viewVolumes() string {
 			lipgloss.NewStyle().Width(driverW).Foreground(colorDim).Render(truncate(vol.Driver, driverW-1)) + "  " +
 			lipgloss.NewStyle().Width(mountW).Foreground(colorSubtext).Render(truncate(vol.Mountpoint, mountW-1)) + "  " +
 			lipgloss.NewStyle().Width(scopeW).Foreground(colorMuted).Render(vol.Scope)
-		if i == m.volCursor {
-			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(w-4).Render(row) + "\n")
-		} else {
-			b.WriteString("  " + listItemStyle.Width(w-4).Render(row) + "\n")
+		isSelected := m.selected[vol.Name]
+		rowW := w - 4
+		switch {
+		case i == m.volCursor && isSelected:
+			mark := selectedMarkStyle.Render("◉ ")
+			b.WriteString(mark + listItemSelStyle.Width(rowW).Render(row) + "\n")
+		case i == m.volCursor:
+			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(rowW).Render(row) + "\n")
+		case isSelected:
+			mark := selectedMarkStyle.Render("◈ ")
+			b.WriteString(mark + listItemStyle.Background(colorBgSelected).Width(rowW).Render(row) + "\n")
+		default:
+			b.WriteString("  " + listItemStyle.Width(rowW).Render(row) + "\n")
 		}
 	}
 
