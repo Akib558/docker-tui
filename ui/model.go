@@ -991,7 +991,13 @@ func (m Model) updateEvents(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ── Volumes ─────────────────────────────────────────────────────────────
 
 func (m Model) fetchVolumes() tea.Cmd {
-	return nil
+	return func() tea.Msg {
+		vols, err := m.client.ListVolumes()
+		if err != nil {
+			return errMsg{err}
+		}
+		return volumesMsg(vols)
+	}
 }
 
 func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
