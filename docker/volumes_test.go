@@ -18,3 +18,15 @@ func TestVolumeInfoDisplayNameEmpty(t *testing.T) {
 		t.Errorf("expected empty string, got %s", v.DisplayName())
 	}
 }
+
+func TestClient_ListVolumes(t *testing.T) {
+	c, err := NewClient()
+	if err != nil {
+		t.Skip("docker not available")
+	}
+	vols, err := c.ListVolumes()
+	if err != nil {
+		t.Fatalf("ListVolumes failed: %v", err)
+	}
+	_ = vols
+}
