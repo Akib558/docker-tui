@@ -275,6 +275,25 @@ func (m Model) pullImage(ref string) tea.Cmd {
 	}
 }
 
+func (m Model) removeVolume(name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.client.RemoveVolume(name); err != nil {
+			return errMsg{err}
+		}
+		return volumeActionDoneMsg{"Removed", name}
+	}
+}
+
+func (m Model) pruneVolumesCmd() tea.Cmd {
+	return func() tea.Msg {
+		deleted, err := m.client.PruneVolumes()
+		if err != nil {
+			return errMsg{err}
+		}
+		return volumeActionDoneMsg{"Pruned", fmt.Sprintf("%d volumes", len(deleted))}
+	}
+}
+
 func (m Model) execIntoContainerCmd(id string) tea.Cmd {
 	return tea.ExecProcess(exec.Command("docker", "exec", "-it", id, "/bin/sh"), func(err error) tea.Msg {
 		return execDoneMsg{err}
