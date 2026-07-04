@@ -20,26 +20,21 @@ func (m Model) helpCentered(w int) string {
 		}
 	} else if len(m.selected) > 0 {
 		keys = []struct{ key, desc string }{
-			{"space", "toggle select"},
-			{"a", "select all"},
+			{"space", "toggle"},
+			{"a", "all"},
 			{"s", "start/stop"},
-			{"R", "restart"},
 			{"d", "remove"},
-			{"L", "logs"},
-			{"esc/a", "deselect"},
+			{"esc", "deselect"},
+			{"?", "more"},
 		}
 	} else {
 		keys = []struct{ key, desc string }{
-			{"j/k", "navigate"},
+			{"j/k", "nav"},
 			{"enter", "details"},
-			{"space", "select"},
 			{"/", "filter"},
 			{"s", "start/stop"},
-			{"e", "exec shell"},
-			{"L", "logs"},
-			{"i", "images"},
-			{"v", "events"},
-			{"t", "theme"},
+			{"space", "select"},
+			{"?", "help"},
 			{"q", "quit"},
 		}
 	}
@@ -49,7 +44,8 @@ func (m Model) helpCentered(w int) string {
 func (m Model) centralLogsHelp(w int) string {
 	if m.centralLogFiltering {
 		return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys([]struct{ key, desc string }{
-			{"type", "filter logs"},
+			{"type", "filter"},
+			{"r", "regex"},
 			{"backspace", "delete"},
 			{"enter/esc", "done"},
 			{"ctrl+u", "clear"},
@@ -58,10 +54,11 @@ func (m Model) centralLogsHelp(w int) string {
 	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys([]struct{ key, desc string }{
 		{"j/k", "scroll"},
 		{"pgup/pgdn", "page"},
-		{"end", "follow"},
 		{"/", "filter"},
+		{"y", "copy"},
+		{"E", "export"},
+		{"?", "help"},
 		{"esc", "back"},
-		{"q", "quit"},
 	})))
 }
 
@@ -75,32 +72,46 @@ func (m Model) detailHelp(w int) string {
 			live = "stop live"
 		}
 		keys = []struct{ key, desc string }{
-			{"tab/←/→", "switch tab"},
+			{"tab", "switch tab"},
 			{"j/k", "scroll"},
-			{"pgup/pgdn", "jump"},
-			{"home/end", "top/bottom"},
 			{"l", live},
-			{"s", "start/stop"},
+			{"E", "export"},
+			{"?", "help"},
 			{"esc", "back"},
 		}
 	} else if m.detailTab == tabTerminal {
 		keys = []struct{ key, desc string }{
-			{"↑/↓", "scrollback"},
-			{"pgup/pgdn", "jump"},
+			{"tab", "switch tab"},
 			{"type", "input"},
 			{"enter", "send"},
 			{"ctrl+\\", "detach"},
 			{"x", "reconnect"},
+			{"?", "help"},
+			{"esc", "back"},
+		}
+	} else if m.detailTab == tabDiff {
+		keys = []struct{ key, desc string }{
+			{"tab", "switch tab"},
+			{"j/k", "scroll"},
+			{"f", "fetch diff"},
+			{"?", "help"},
+			{"esc", "back"},
+		}
+	} else if m.detailTab == tabProcesses {
+		keys = []struct{ key, desc string }{
+			{"tab", "switch tab"},
+			{"j/k", "scroll"},
+			{"p", "refresh"},
+			{"?", "help"},
 			{"esc", "back"},
 		}
 	} else {
 		keys = []struct{ key, desc string }{
-			{"tab/←/→", "switch tab"},
+			{"tab", "switch tab"},
 			{"j/k", "scroll"},
 			{"s", "start/stop"},
-			{"R", "restart"},
-			{"d", "remove"},
-			{"e", "exec shell"},
+			{"e", "exec"},
+			{"?", "help"},
 			{"esc", "back"},
 		}
 	}

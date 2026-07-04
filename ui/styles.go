@@ -215,3 +215,16 @@ func stateIcon(state string) string {
 		return "?"
 	}
 }
+
+func healthIcon(health string) string {
+	switch health {
+	case "healthy":
+		return lipgloss.NewStyle().Foreground(colorSuccess).Render("♥")
+	case "unhealthy":
+		return lipgloss.NewStyle().Foreground(colorDanger).Render("♥")
+	case "starting":
+		return lipgloss.NewStyle().Foreground(colorWarning).Render("♥")
+	default:
+		return ""
+	}
+}

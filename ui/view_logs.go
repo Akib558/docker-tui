@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
+	"github.com/akib558/docker-tui/config"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -23,7 +25,7 @@ func (m Model) detailLogContentRows() int {
 	return rows
 }
 
-func renderLogMessage(entry LogEntry, width int, showTag bool, targets map[string]LogTarget) string {
+func renderLogMessage(entry LogEntry, width int, showTag bool, targets map[string]LogTarget, cfg *config.Config) string {
 	if width < 20 {
 		width = 20
 	}
@@ -59,7 +61,27 @@ func renderLogMessage(entry LogEntry, width int, showTag bool, targets map[strin
 	if entry.System {
 		return prefix + lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(line)
 	}
+
+	// Apply log highlighting
+	if cfg != nil && len(cfg.LogHighlightPatterns) > 0 {
+		highlighted := highlightLogLine(line, cfg.LogHighlightPatterns)
+		return prefix + highlighted
+	}
+
 	return prefix + lipgloss.NewStyle().Foreground(colorSubtext).Render(line)
+}
+
+func highlightLogLine(line string, patterns []config.LogHighlightPattern) string {
+	for _, pattern := range patterns {
+		re, err := regexp.Compile(pattern.Pattern)
+		if err != nil {
+			continue
+		}
+		if re.MatchString(line) {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color(pattern.Color)).Bold(true).Render(line)
+		}
+	}
+	return lipgloss.NewStyle().Foreground(colorSubtext).Render(line)
 }
 
 func (m Model) viewCentralLogs() string {
@@ -76,6 +98,9 @@ func (m Model) viewCentralLogs() string {
 		if text == "" {
 			text = "type to filter logs..."
 		}
+		if m.centralLogRegex {
+			text += " (regex)"
+		}
 		filter = "  " + filterBarStyle.Render("⌕ "+text) + "\n"
 	}
 
@@ -86,7 +111,11 @@ func (m Model) viewCentralLogs() string {
 	start, end, total := m.centralLogs.VisibleWindow(m.centralLogViewportHeight())
 	title := fmt.Sprintf("  Central Logs  %s  targets:%d", mode, len(m.centralLogTargets))
 	if m.centralLogs.Filter != "" {
-		title += fmt.Sprintf("  filter:%q", m.centralLogs.Filter)
+		if m.centralLogRegex {
+			title += fmt.Sprintf("  filter(re):%q", m.centralLogs.Filter)
+		} else {
+			title += fmt.Sprintf("  filter:%q", m.centralLogs.Filter)
+		}
 	}
 	if total > 0 {
 		title += fmt.Sprintf("  %d-%d/%d", start+1, end, total)
@@ -98,8 +127,13 @@ func (m Model) viewCentralLogs() string {
 	if len(rows) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("  No logs available.") + "\n")
 	} else {
-		for _, entry := range rows {
-			b.WriteString(renderLogMessage(entry, w-4, true, m.centralLogs.Targets) + "\n")
+		for i, entry := range rows {
+			line := renderLogMessage(entry, w-4, true, m.centralLogs.Targets, m.cfg)
+			if i == m.centralLogCursor {
+				b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(w-4).Render(line) + "\n")
+			} else {
+				b.WriteString("  " + line + "\n")
+			}
 		}
 	}
 

@@ -8,6 +8,14 @@ func (m *Model) notify(msg string, isErr bool) {
 	m.notification = msg
 	m.notifyIsErr = isErr
 	m.notifyTime = time.Now()
+	m.notifyHistory = append(m.notifyHistory, Notification{
+		Message:   msg,
+		IsError:   isErr,
+		Timestamp: time.Now(),
+	})
+	if len(m.notifyHistory) > 100 {
+		m.notifyHistory = m.notifyHistory[len(m.notifyHistory)-100:]
+	}
 }
 
 // ── Stream lifecycle ─────────────────────────────────────────────────────

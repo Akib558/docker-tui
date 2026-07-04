@@ -56,8 +56,8 @@ func (m Model) viewList() string {
 	cols := m.calcColumns()
 	b.WriteString(m.renderTableHeader(cols) + "\n")
 
-	// Rows that fit on screen (header=3, dashboard=5, thead=2, help=2, notif=1, pad=1)
-	usedLines := 14
+	dashHeight := m.dashboardHeight(w)
+	usedLines := 3 + dashHeight + 1 + 2 + 1 + 1
 	visibleRows := m.height - usedLines
 	if visibleRows < 3 {
 		visibleRows = 3
@@ -90,7 +90,9 @@ func (m Model) renderHeader(w int) string {
 	logo := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render("⬡ DOCKER TUI")
 
 	var center string
-	if m.filtering {
+	if m.reconnecting {
+		center = lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render("⟳ reconnecting...")
+	} else if m.filtering {
 		filterText := m.filterText
 		if filterText == "" {
 			filterText = "type to search..."
@@ -103,13 +105,17 @@ func (m Model) renderHeader(w int) string {
 		}
 		center = filterBarStyle.Render(searchIcon + filterContent)
 	} else if len(m.selected) > 0 {
-		center = selectedMarkStyle.Render(fmt.Sprintf("◈ %d container(s) selected", len(m.selected)))
+		center = selectedMarkStyle.Render(fmt.Sprintf("◈ %d selected", len(m.selected)))
 	} else if m.overview != nil {
 		dot := lipgloss.NewStyle().Foreground(colorDim).Render(" · ")
 		parts := []string{
 			lipgloss.NewStyle().Foreground(colorSubtext).Render("v" + m.overview.ServerVersion),
 			lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%d images", m.overview.Images)),
-			lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%d CPUs", m.overview.CPUs)),
+		}
+		if m.sortMode != sortName {
+			sortNames := []string{"name", "state", "cpu", "mem", "image"}
+			sortLabel := lipgloss.NewStyle().Foreground(colorSecondary).Render("↕ " + sortNames[m.sortMode])
+			parts = append(parts, sortLabel)
 		}
 		center = strings.Join(parts, dot)
 	}
@@ -145,91 +151,289 @@ func (m Model) renderHeader(w int) string {
 	return headerBar + "\n" + sep + "\n"
 }
 
-// ── Dashboard (stat cards + host stats) ─────────────────────────────────
+// ── Dashboard (container list by status + host stats) ───────────────────
 
 func (m Model) renderDashboard(w int) string {
-	running, stopped, other := 0, 0, 0
+	if len(m.containers) == 0 {
+		return ""
+	}
+
+	var running, stopped, paused []docker.ContainerInfo
 	for _, c := range m.containers {
 		switch c.State {
 		case "running":
-			running++
+			running = append(running, c)
 		case "exited", "dead":
-			stopped++
-		default:
-			other++
-		}
-	}
-	total := len(m.containers)
-
-	cardW := 16
-	if w >= 120 {
-		cardW = 18
-	} else if w < 60 {
-		cardW = 12
-	}
-
-	makeCard := func(label, value string, vc lipgloss.Color) string {
-		inner := cardW - 6
-		if inner < 4 {
-			inner = 4
-		}
-		icon := lipgloss.NewStyle().Foreground(vc).Render("▪ ")
-		l := statCardLabel.Width(inner).Render(label)
-		v := statCardValue.Foreground(vc).Width(inner).Render(value)
-		return statCardBorder.Width(cardW).BorderForeground(vc).Render(icon + l + "\n" + "  " + v)
-	}
-
-	cards := []string{
-		makeCard("TOTAL", fmt.Sprintf("%d", total), colorPrimary),
-		makeCard("RUNNING", fmt.Sprintf("%d", running), colorSuccess),
-		makeCard("STOPPED", fmt.Sprintf("%d", stopped), colorDanger),
-	}
-	if other > 0 {
-		cards = append(cards, makeCard("OTHER", fmt.Sprintf("%d", other), colorWarning))
-	}
-
-	if w >= 80 {
-		var hostLines []string
-		mem := m.systemMem
-		if mem.Total > 0 {
-			barW := cardW + 2
-			if barW < 8 {
-				barW = 8
-			}
-			hostLines = append(hostLines,
-				lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("MEM  ")+
-					hostMemBar(mem.Percent, barW-5))
-			hostLines = append(hostLines,
-				lipgloss.NewStyle().Foreground(colorDim).
-					Render(fmt.Sprintf("     %s / %s", formatBytes(mem.Used), formatBytes(mem.Total))))
-		}
-		load := m.systemLoad
-		if load.Load1 > 0 {
-			hostLines = append(hostLines,
-				lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("LOAD ")+
-					lipgloss.NewStyle().Foreground(colorSubtext).
-						Render(fmt.Sprintf("%.2f  %.2f  %.2f", load.Load1, load.Load5, load.Load15)))
-		}
-		if len(hostLines) > 0 {
-			hostTitle := lipgloss.NewStyle().Foreground(colorCyan).Bold(true).Render("⬡ HOST")
-			hostCard := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(colorCyan).
-				Padding(0, 1).
-				Render(hostTitle + "\n" + strings.Join(hostLines, "\n"))
-			cards = append(cards, hostCard)
+			stopped = append(stopped, c)
+		case "paused":
+			paused = append(paused, c)
 		}
 	}
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, interleave(cards, "  ")...)
+	if w < 60 {
+		return m.renderCompactDashboard(w, running, stopped, paused)
+	}
+
+	var panels []string
+
+	if len(running) > 0 {
+		panels = append(panels, m.renderContainerGroup("RUNNING", running, colorSuccess, w))
+	}
+	if len(paused) > 0 {
+		panels = append(panels, m.renderContainerGroup("PAUSED", paused, colorWarning, w))
+	}
+	if len(stopped) > 0 {
+		panels = append(panels, m.renderContainerGroup("STOPPED", stopped, colorDanger, w))
+	}
+
+	hostPanel := m.renderHostPanel(w)
+	if hostPanel != "" {
+		panels = append(panels, hostPanel)
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, interleave(panels, " ")...)
 	return lipgloss.PlaceHorizontal(w, lipgloss.Center, row)
+}
+
+func (m Model) renderContainerGroup(title string, containers []docker.ContainerInfo, color lipgloss.Color, totalWidth int) string {
+	panelW := m.calcGroupPanelWidth(len(containers), totalWidth)
+	innerW := panelW - 4
+
+	header := lipgloss.NewStyle().Foreground(color).Bold(true).
+		Render(fmt.Sprintf("%s (%d)", title, len(containers)))
+
+	var lines []string
+	for _, c := range containers {
+		icon := stateIcon(c.State)
+		stStyle := stateStyle(c.State)
+
+		// Truncate raw name before ANSI rendering to avoid corrupting escape sequences
+		nameAvail := max(innerW-2, 1) // 2 = icon(1) + space(1)
+		nameStr := truncate(c.Name, nameAvail)
+		nameVisualW := 2 + len(nameStr) // icon + space + name
+
+		line := stStyle.Render(icon) + " " + lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(nameStr)
+
+		// Only append info if there's room (need at least " · X" = 4 chars)
+		if nameVisualW+4 < innerW {
+			var info []string
+			remaining := innerW - nameVisualW - 3 // 3 = " · "
+			if c.Image != "" && remaining > 4 {
+				img := truncate(c.Image, min(remaining, 20))
+				info = append(info, lipgloss.NewStyle().Foreground(colorSubtext).Render(img))
+				remaining -= len(img)
+			}
+			if c.State == "running" && !c.StartedAt.IsZero() {
+				uptime := formatUptime(time.Since(c.StartedAt))
+				info = append(info, lipgloss.NewStyle().Foreground(colorMuted).Render(uptime))
+			}
+			if len(info) > 0 {
+				line += " " + lipgloss.NewStyle().Foreground(colorDim).Render("·") + " " + strings.Join(info, " ")
+			}
+		}
+
+		lines = append(lines, line)
+	}
+
+	content := header + "\n" + strings.Join(lines, "\n")
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(color).
+		Padding(0, 1).
+		Width(panelW).
+		Render(content)
+}
+
+func (m Model) renderHostPanel(totalWidth int) string {
+	mem := m.systemMem
+	load := m.systemLoad
+	if mem.Total == 0 && load.Load1 == 0 {
+		return ""
+	}
+
+	panelW := 22
+	if totalWidth >= 140 {
+		panelW = 26
+	}
+
+	var lines []string
+	lines = append(lines, lipgloss.NewStyle().Foreground(colorCyan).Bold(true).Render("HOST"))
+
+	if mem.Total > 0 {
+		barW := panelW - 8
+		if barW < 6 {
+			barW = 6
+		}
+		lines = append(lines,
+			lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("MEM ")+
+				hostMemBar(mem.Percent, barW))
+		lines = append(lines,
+			lipgloss.NewStyle().Foreground(colorDim).
+				Render(fmt.Sprintf("    %s / %s", formatBytes(mem.Used), formatBytes(mem.Total))))
+	}
+	if load.Load1 > 0 {
+		lines = append(lines,
+			lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Render("CPU ")+
+				lipgloss.NewStyle().Foreground(colorSubtext).
+					Render(fmt.Sprintf("%.1f  %.1f", load.Load1, load.Load5)))
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorCyan).
+		Padding(0, 1).
+		Width(panelW).
+		Render(strings.Join(lines, "\n"))
+}
+
+func (m Model) calcGroupPanelWidth(count int, totalWidth int) int {
+	nameW := 12
+	if count > 0 {
+		maxLen := 0
+		for _, c := range m.containers {
+			if len(c.Name) > maxLen {
+				maxLen = len(c.Name)
+			}
+		}
+		nameW = maxLen + 4
+	}
+	panelW := nameW + 4
+	minW := 18
+	maxW := totalWidth / 3
+	if panelW < minW {
+		panelW = minW
+	}
+	if panelW > maxW {
+		panelW = maxW
+	}
+	return panelW
+}
+
+func (m Model) dashboardHeight(w int) int {
+	if len(m.containers) == 0 {
+		return 0
+	}
+
+	if w < 60 {
+		height := 0
+		running, stopped, paused := 0, 0, 0
+		for _, c := range m.containers {
+			switch c.State {
+			case "running":
+				running++
+			case "exited", "dead":
+				stopped++
+			case "paused":
+				paused++
+			}
+		}
+		if running > 0 {
+			height += 1 + running // header + containers
+		}
+		if stopped > 0 {
+			height += 1 + stopped
+		}
+		if paused > 0 {
+			height += 1 + paused
+		}
+		return height
+	}
+
+	var running, stopped, paused []docker.ContainerInfo
+	for _, c := range m.containers {
+		switch c.State {
+		case "running":
+			running = append(running, c)
+		case "exited", "dead":
+			stopped = append(stopped, c)
+		case "paused":
+			paused = append(paused, c)
+		}
+	}
+
+	maxPanelHeight := 0
+	if len(running) > 0 {
+		h := m.calcGroupHeight(running, w)
+		if h > maxPanelHeight {
+			maxPanelHeight = h
+		}
+	}
+	if len(stopped) > 0 {
+		h := m.calcGroupHeight(stopped, w)
+		if h > maxPanelHeight {
+			maxPanelHeight = h
+		}
+	}
+	if len(paused) > 0 {
+		h := m.calcGroupHeight(paused, w)
+		if h > maxPanelHeight {
+			maxPanelHeight = h
+		}
+	}
+
+	hostH := 0
+	if m.systemMem.Total > 0 || m.systemLoad.Load1 > 0 {
+		hostH = 5
+	}
+	if hostH > maxPanelHeight {
+		maxPanelHeight = hostH
+	}
+
+	return maxPanelHeight
+}
+
+func (m Model) calcGroupHeight(containers []docker.ContainerInfo, totalWidth int) int {
+	// Each container is on its own line, plus header
+	return len(containers) + 1
+}
+
+func (m Model) renderCompactDashboard(w int, running, stopped, paused []docker.ContainerInfo) string {
+	var b strings.Builder
+
+	if len(running) > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).
+			Render(fmt.Sprintf("● %d running\n", len(running))))
+		for _, c := range running {
+			line := lipgloss.NewStyle().Foreground(colorText).Render(c.Name)
+			if c.Image != "" {
+				line += " " + lipgloss.NewStyle().Foreground(colorDim).Render(truncate(c.Image, 15))
+			}
+			b.WriteString("  " + line + "\n")
+		}
+	}
+
+	if len(stopped) > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorDanger).Bold(true).
+			Render(fmt.Sprintf("○ %d stopped\n", len(stopped))))
+		for _, c := range stopped {
+			line := lipgloss.NewStyle().Foreground(colorMuted).Render(c.Name)
+			if c.Image != "" {
+				line += " " + lipgloss.NewStyle().Foreground(colorDim).Render(truncate(c.Image, 15))
+			}
+			b.WriteString("  " + line + "\n")
+		}
+	}
+
+	if len(paused) > 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorWarning).Bold(true).
+			Render(fmt.Sprintf("◑ %d paused\n", len(paused))))
+		for _, c := range paused {
+			line := lipgloss.NewStyle().Foreground(colorSubtext).Render(c.Name)
+			if c.Image != "" {
+				line += " " + lipgloss.NewStyle().Foreground(colorDim).Render(truncate(c.Image, 15))
+			}
+			b.WriteString("  " + line + "\n")
+		}
+	}
+
+	return b.String()
 }
 
 // ── Responsive columns ──────────────────────────────────────────────────
 
 type columns struct {
-	state, name, image, cpu, mem, status, ports, id int
-	showCPU, showMem, showPorts, showID             bool
+	state, name, image, cpu, mem, status, ports, id, netio, blockio int
+	showCPU, showMem, showPorts, showID, showNetIO, showBlockIO     bool
 }
 
 func (m Model) calcColumns() columns {
@@ -252,7 +456,7 @@ func (m Model) calcColumns() columns {
 		c.cpu = max(w*13/100, 12)
 		c.mem = max(w*13/100, 12)
 		c.status = w - c.state - c.name - c.image - c.cpu - c.mem
-	case w < 145:
+	case w < 150:
 		c.showCPU = true
 		c.showMem = true
 		c.showPorts = true
@@ -268,7 +472,7 @@ func (m Model) calcColumns() columns {
 		c.showPorts = true
 		c.showID = true
 		c.name = w * 15 / 100
-		c.image = w * 18 / 100
+		c.image = w * 17 / 100
 		c.cpu = max(w*10/100, 12)
 		c.mem = max(w*10/100, 12)
 		c.status = w * 14 / 100
@@ -299,6 +503,12 @@ func (m Model) renderTableHeader(c columns) string {
 	if c.showID {
 		parts += " " + tableHeaderStyle.Width(c.id).Render("CONTAINER ID")
 	}
+	if c.showNetIO {
+		parts += " " + tableHeaderStyle.Width(c.netio).Render("NET I/O")
+	}
+	if c.showBlockIO {
+		parts += " " + tableHeaderStyle.Width(c.blockio).Render("BLOCK I/O")
+	}
 	return listHeaderStyle.Width(m.width).Render(parts)
 }
 
@@ -307,7 +517,13 @@ func (m Model) renderTableRow(ct docker.ContainerInfo, isCursor bool, c columns)
 	stStyle := stateStyle(ct.State)
 	isMultiSel := m.selected[ct.ID]
 
-	row := stStyle.Width(c.state).Render(icon) + " " +
+	stateStr := stStyle.Width(c.state).Render(icon)
+	if ct.Health != "" {
+		// healthIcon is 1 char; pad to same width as state column for alignment
+		stateStr = stStyle.Render(icon) + healthIcon(ct.Health) + strings.Repeat(" ", max(c.state-2, 0))
+	}
+
+	row := stateStr + " " +
 		lipgloss.NewStyle().Width(c.name).Foreground(colorText).Render(truncate(ct.Name, c.name-1))
 
 	if c.image > 0 {
@@ -336,6 +552,20 @@ func (m Model) renderTableRow(ct docker.ContainerInfo, isCursor bool, c columns)
 	}
 	if c.showID {
 		row += " " + lipgloss.NewStyle().Width(c.id).Foreground(colorDim).Render(truncate(ct.ID, c.id-1))
+	}
+	if c.showNetIO {
+		netStr := "-"
+		if s, ok := m.stats[ct.ID]; ok {
+			netStr = formatBytes(s.NetRx) + "/" + formatBytes(s.NetTx)
+		}
+		row += " " + lipgloss.NewStyle().Width(c.netio).Foreground(colorSubtext).Render(truncate(netStr, c.netio-1))
+	}
+	if c.showBlockIO {
+		blockStr := "-"
+		if s, ok := m.stats[ct.ID]; ok {
+			blockStr = formatBytes(s.BlockRead) + "/" + formatBytes(s.BlockWrite)
+		}
+		row += " " + lipgloss.NewStyle().Width(c.blockio).Foreground(colorSubtext).Render(truncate(blockStr, c.blockio-1))
 	}
 
 	rowW := m.width - 4

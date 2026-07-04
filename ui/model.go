@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,6 +57,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case volumesMsg:
 		m.volumes = []docker.VolumeInfo(msg)
+		m.loading = false
+		return m, nil
+
+	case networksMsg:
+		m.networks = []docker.NetworkResource(msg)
 		m.loading = false
 		return m, nil
 
@@ -171,23 +178,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diff = []docker.DiffEntry(msg)
 		return m, nil
 
+	case topMsg:
+		m.processTop = msg.top
+		m.processLoaded = true
+		return m, nil
+
 	case errMsg:
 		m.err = msg.err
 		m.loading = false
-		m.notify(fmt.Sprintf("Error: %v", msg.err), true)
-		return m, nil
+		m.reconnecting = true
+		m.reconnectAttempts++
+		m.notify(fmt.Sprintf("Connection lost. Reconnecting (attempt %d)...", m.reconnectAttempts), true)
+		return m, m.reconnect()
+
+	case reconnectMsg:
+		if msg.success {
+			m.reconnecting = false
+			m.reconnectAttempts = 0
+			m.err = nil
+			m.notify("Reconnected to Docker", false)
+			return m, m.refreshContainers()
+		}
+		m.notify(fmt.Sprintf("Reconnect failed: %v. Retrying...", msg.err), true)
+		return m, m.reconnect()
 
 	case actionDoneMsg:
 		m.notify(fmt.Sprintf("%s: %s", msg.action, msg.name), false)
 		return m, m.refreshContainers()
 
 	case imageActionDoneMsg:
+		m.imagePullProgress = ""
 		m.notify(fmt.Sprintf("%s: %s", msg.action, msg.name), false)
 		return m, m.fetchImages()
+
+	case pullProgressMsg:
+		m.imagePullProgress = msg.text
+		if msg.next != nil {
+			return m, msg.next
+		}
+		return m, nil
 
 	case volumeActionDoneMsg:
 		m.notify(fmt.Sprintf("%s: %s", msg.action, msg.name), false)
 		return m, m.fetchVolumes()
+
+	case networkActionDoneMsg:
+		m.notify(fmt.Sprintf("%s: %s", msg.action, msg.name), false)
+		return m, m.fetchNetworks()
 
 	case execDoneMsg:
 		if msg.err != nil {
@@ -217,6 +254,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m.quit()
+		case "?":
+			if m.dialog == dialogNone && !m.filtering {
+				m.dialog = dialogHelp
+				return m, nil
+			}
+		case ":":
+			if m.dialog == dialogNone && !m.filtering {
+				m.dialog = dialogCommandPalette
+				m.commandPaletteText = ""
+				m.commandPaletteCursor = 0
+				m.commandPaletteResults = m.getCommands()
+				return m, nil
+			}
 		}
 		if m.dialog != dialogNone {
 			return m.handleDialog(msg)
@@ -237,6 +287,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCentralLogs(msg)
 		case viewVolumes:
 			return m.updateVolumes(msg)
+		case viewNetworks:
+			return m.updateNetworks(msg)
+		case viewNotifications:
+			return m.updateNotifications(msg)
 		}
 	}
 	return m, nil
@@ -341,6 +395,15 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.toggleStartStop()
 	case "R":
 		return m.doRestart()
+	case "P":
+		return m.doPauseUnpause()
+	case "K":
+		return m.doKill()
+	case "X":
+		m.dialog = dialogConfirm
+		m.confirmMsg = "Run docker system prune?\n\nRemoves stopped containers, dangling images, unused networks, and orphaned volumes."
+		m.confirmOK = m.pruneSystem()
+		return m, nil
 	case "d":
 		return m.confirmRemove()
 	case "e":
@@ -358,8 +421,17 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.volCursor = 0
 		m.loading = true
 		return m, m.fetchVolumes()
+	case "n":
+		m.view = viewNetworks
+		m.netCursor = 0
+		m.loading = true
+		return m, m.fetchNetworks()
 	case "L":
 		return m.openCentralLogs()
+	case "N":
+		m.view = viewNotifications
+		m.notifyCursor = len(m.notifyHistory) - 1
+		return m, nil
 	case "/":
 		m.filtering = true
 		m.filterText = ""
@@ -369,6 +441,8 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "c":
 		m.groupByCompose = !m.groupByCompose
+	case "S":
+		m.sortMode = (m.sortMode + 1) % sortModeCount
 	case "t":
 		m.dialog = dialogTheme
 	case "+":
@@ -401,6 +475,8 @@ func (m Model) openDetail(c docker.ContainerInfo) (tea.Model, tea.Cmd) {
 		Color: ResolveLogTargetColor(m.cfg.ContainerColors, LogTarget{ID: c.ID, Name: c.Name, State: c.State}),
 	}})
 	m.diff = nil
+	m.processTop = docker.ContainerTop{}
+	m.processLoaded = false
 	m.terminalInput = ""
 	m.terminalOutput = ""
 	m.terminalShell = ""
@@ -418,6 +494,8 @@ func (m Model) openCentralLogs() (tea.Model, tea.Cmd) {
 	m.centralLogs = NewLogViewerState(centralLogBufferMax, targets)
 	m.centralLogFiltering = false
 	m.centralLogFilter = ""
+	m.centralLogRegex = false
+	m.centralLogCursor = 0
 	m.view = viewLogs
 	if len(targets) == 0 {
 		m.centralLogs.Append(LogEntry{
@@ -472,6 +550,63 @@ func (m Model) doRestart() (tea.Model, tea.Cmd) {
 	}
 	if c := m.selectedContainer(); c != nil {
 		return m, m.restartContainer(c.ID, c.Name)
+	}
+	return m, nil
+}
+
+func (m Model) doPauseUnpause() (tea.Model, tea.Cmd) {
+	if len(m.selected) > 0 {
+		var cmds []tea.Cmd
+		for _, c := range m.containers {
+			if m.selected[c.ID] {
+				switch c.State {
+				case "running":
+					cmds = append(cmds, m.pauseContainer(c.ID, c.Name))
+				case "paused":
+					cmds = append(cmds, m.unpauseContainer(c.ID, c.Name))
+				}
+			}
+		}
+		m.selected = make(map[string]bool)
+		if len(cmds) == 0 {
+			m.notify("Only running or paused containers can be toggled", true)
+			return m, nil
+		}
+		return m, tea.Batch(cmds...)
+	}
+	if c := m.selectedContainer(); c != nil {
+		switch c.State {
+		case "running":
+			return m, m.pauseContainer(c.ID, c.Name)
+		case "paused":
+			return m, m.unpauseContainer(c.ID, c.Name)
+		default:
+			m.notify("Container must be running or paused", true)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) doKill() (tea.Model, tea.Cmd) {
+	if len(m.selected) > 0 {
+		var cmds []tea.Cmd
+		for _, c := range m.containers {
+			if m.selected[c.ID] && (c.State == "running" || c.State == "paused") {
+				cmds = append(cmds, m.killContainer(c.ID, c.Name))
+			}
+		}
+		m.selected = make(map[string]bool)
+		if len(cmds) == 0 {
+			m.notify("Only running or paused containers can be killed", true)
+			return m, nil
+		}
+		return m, tea.Batch(cmds...)
+	}
+	if c := m.selectedContainer(); c != nil {
+		if c.State == "running" || c.State == "paused" {
+			return m, m.killContainer(c.ID, c.Name)
+		}
+		m.notify("Container must be running or paused", true)
 	}
 	return m, nil
 }
@@ -559,19 +694,62 @@ func (m Model) handleFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) filteredContainers() []docker.ContainerInfo {
+	var result []docker.ContainerInfo
 	if m.filterText == "" {
-		return m.containers
-	}
-	q := strings.ToLower(m.filterText)
-	var out []docker.ContainerInfo
-	for _, c := range m.containers {
-		if strings.Contains(strings.ToLower(c.Name), q) ||
-			strings.Contains(strings.ToLower(c.Image), q) ||
-			strings.Contains(strings.ToLower(c.State), q) {
-			out = append(out, c)
+		result = make([]docker.ContainerInfo, len(m.containers))
+		copy(result, m.containers)
+	} else {
+		q := strings.ToLower(m.filterText)
+		for _, c := range m.containers {
+			if strings.Contains(strings.ToLower(c.Name), q) ||
+				strings.Contains(strings.ToLower(c.Image), q) ||
+				strings.Contains(strings.ToLower(c.State), q) {
+				result = append(result, c)
+			}
 		}
 	}
-	return out
+
+	// Apply sorting
+	sort.Slice(result, func(i, j int) bool {
+		switch m.sortMode {
+		case sortName:
+			// Group by state priority (running first), then alphabetical within group
+			pi, pj := statePriority(result[i].State), statePriority(result[j].State)
+			if pi != pj {
+				return pi < pj
+			}
+			return result[i].Name < result[j].Name
+		case sortState:
+			pi, pj := statePriority(result[i].State), statePriority(result[j].State)
+			if pi != pj {
+				return pi < pj
+			}
+			return result[i].Name < result[j].Name
+		case sortCPU:
+			cpuI := m.stats[result[i].ID].CPUPercent
+			cpuJ := m.stats[result[j].ID].CPUPercent
+			if cpuI == cpuJ {
+				return result[i].Name < result[j].Name
+			}
+			return cpuI > cpuJ
+		case sortMemory:
+			memI := m.stats[result[i].ID].MemPercent
+			memJ := m.stats[result[j].ID].MemPercent
+			if memI == memJ {
+				return result[i].Name < result[j].Name
+			}
+			return memI > memJ
+		case sortImage:
+			if result[i].Image == result[j].Image {
+				return result[i].Name < result[j].Name
+			}
+			return result[i].Image < result[j].Image
+		default:
+			return result[i].Name < result[j].Name
+		}
+	})
+
+	return result
 }
 
 func (m Model) filteredVolumes() []docker.VolumeInfo {
@@ -654,6 +832,50 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.inputText += msg.String()
 			}
 		}
+
+	case dialogHelp:
+		switch msg.String() {
+		case "esc", "q", "?":
+			m.dialog = dialogNone
+		}
+
+	case dialogCommandPalette:
+		switch msg.String() {
+		case "esc":
+			m.dialog = dialogNone
+			m.commandPaletteText = ""
+			m.commandPaletteResults = nil
+		case "enter":
+			if m.commandPaletteCursor < len(m.commandPaletteResults) {
+				cmd := m.commandPaletteResults[m.commandPaletteCursor].Action
+				m.dialog = dialogNone
+				m.commandPaletteText = ""
+				m.commandPaletteResults = nil
+				if cmd != nil {
+					return m, cmd()
+				}
+			}
+		case "up", "ctrl+p":
+			if m.commandPaletteCursor > 0 {
+				m.commandPaletteCursor--
+			}
+		case "down", "ctrl+n":
+			if m.commandPaletteCursor < len(m.commandPaletteResults)-1 {
+				m.commandPaletteCursor++
+			}
+		case "backspace":
+			if len(m.commandPaletteText) > 0 {
+				m.commandPaletteText = m.commandPaletteText[:len(m.commandPaletteText)-1]
+				m.commandPaletteCursor = 0
+				m.commandPaletteResults = m.filterCommands(m.commandPaletteText)
+			}
+		default:
+			if len(msg.String()) == 1 {
+				m.commandPaletteText += msg.String()
+				m.commandPaletteCursor = 0
+				m.commandPaletteResults = m.filterCommands(m.commandPaletteText)
+			}
+		}
 	}
 	return m, nil
 }
@@ -733,6 +955,34 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailTab = (m.detailTab + tabCount - 1) % tabCount
 		m.detailScroll = 0
 		return m.onTabSwitch()
+	case "1":
+		m.detailTab = tabInfo
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "2":
+		m.detailTab = tabResources
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "3":
+		m.detailTab = tabEnv
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "4":
+		m.detailTab = tabLogs
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "5":
+		m.detailTab = tabTerminal
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "6":
+		m.detailTab = tabDiff
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "7":
+		m.detailTab = tabProcesses
+		m.detailScroll = 0
+		return m.onTabSwitch()
 	case "up", "k":
 		if m.detailTab == tabTerminal {
 			m.terminalFollow = false
@@ -798,6 +1048,24 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.inspected != nil {
 			return m, m.restartContainer(m.inspected.ID, m.inspected.Name)
 		}
+	case "P":
+		if m.inspected != nil {
+			switch m.inspected.State {
+			case "running":
+				return m, m.pauseContainer(m.inspected.ID, m.inspected.Name)
+			case "paused":
+				return m, m.unpauseContainer(m.inspected.ID, m.inspected.Name)
+			default:
+				m.notify("Container must be running or paused", true)
+			}
+		}
+	case "K":
+		if m.inspected != nil {
+			if m.inspected.State == "running" || m.inspected.State == "paused" {
+				return m, m.killContainer(m.inspected.ID, m.inspected.Name)
+			}
+			m.notify("Container must be running or paused", true)
+		}
 	case "d":
 		if m.inspected != nil {
 			c := m.inspected
@@ -823,6 +1091,18 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, m.streamLogs(m.inspected.ID)
 			}
 		}
+	case "E":
+		if m.detailTab == tabLogs {
+			return m.promptExportDetailLogs()
+		}
+	case "f":
+		if m.detailTab == tabDiff && m.inspected != nil {
+			return m, m.getDiff(m.inspected.ID)
+		}
+	case "p":
+		if m.detailTab == tabProcesses && m.inspected != nil {
+			return m, m.getTop(m.inspected.ID)
+		}
 	case "t":
 		m.dialog = dialogTheme
 	}
@@ -832,6 +1112,10 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) onTabSwitch() (tea.Model, tea.Cmd) {
 	if m.detailTab != tabLogs {
 		m.stopLogStreaming()
+	}
+	if m.detailTab == tabProcesses && m.inspected != nil {
+		m.processLoaded = false
+		return m, m.getTop(m.inspected.ID)
 	}
 	if m.detailTab != tabTerminal {
 		m.stopTerminalSession()
@@ -852,7 +1136,12 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.centralLogFiltering = false
 		case "ctrl+u":
 			m.centralLogFilter = ""
+			m.centralLogRegex = false
 			m.centralLogs.SetFilter("")
+			m.centralLogs.SetUseRegex(false)
+		case "r":
+			m.centralLogRegex = !m.centralLogRegex
+			m.centralLogs.SetUseRegex(m.centralLogRegex)
 		case "backspace":
 			if len(m.centralLogFilter) > 0 {
 				m.centralLogFilter = m.centralLogFilter[:len(m.centralLogFilter)-1]
@@ -879,8 +1168,17 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.centralLogs.SetFilter("")
 	case "up", "k":
 		m.centralLogs.ScrollBy(-1, height)
+		if m.centralLogCursor > 0 {
+			m.centralLogCursor--
+		}
+		m.centralLogs.LogCursor = m.centralLogCursor
 	case "down", "j":
 		m.centralLogs.ScrollBy(1, height)
+		maxVisible := m.centralLogViewportHeight()
+		if m.centralLogCursor < maxVisible-1 {
+			m.centralLogCursor++
+		}
+		m.centralLogs.LogCursor = m.centralLogCursor
 	case "pgup":
 		m.centralLogs.ScrollPage(-1, height)
 	case "pgdown":
@@ -889,8 +1187,108 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.centralLogs.ScrollHome(height)
 	case "end":
 		m.centralLogs.ScrollEnd()
+	case "y":
+		return m.copyCentralLogLine()
+	case "E":
+		return m.promptExportCentralLogs()
 	}
 	return m, nil
+}
+
+func (m Model) copyCentralLogLine() (tea.Model, tea.Cmd) {
+	entries := m.centralLogs.VisibleEntries(m.centralLogViewportHeight())
+	idx := m.centralLogCursor
+	if idx >= 0 && idx < len(entries) {
+		entry := entries[idx]
+		text := entry.Message
+		if !entry.Timestamp.IsZero() {
+			text = entry.Timestamp.Format("15:04:05") + " " + text
+		}
+		if err := CopyToClipboard(text); err != nil {
+			m.notify("Failed to copy: "+err.Error(), true)
+		} else {
+			m.notify("Copied to clipboard", false)
+		}
+	} else if len(entries) > 0 {
+		entry := entries[len(entries)-1]
+		text := entry.Message
+		if !entry.Timestamp.IsZero() {
+			text = entry.Timestamp.Format("15:04:05") + " " + text
+		}
+		if err := CopyToClipboard(text); err != nil {
+			m.notify("Failed to copy: "+err.Error(), true)
+		} else {
+			m.notify("Copied to clipboard", false)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) promptExportCentralLogs() (tea.Model, tea.Cmd) {
+	m.dialog = dialogInput
+	m.inputPrompt = "Export logs to file:"
+	m.inputText = ""
+	m.inputSubmit = func(path string) tea.Cmd {
+		return m.exportCentralLogs(path)
+	}
+	return m, nil
+}
+
+func (m Model) exportCentralLogs(path string) tea.Cmd {
+	entries := m.centralLogs.Entries
+	return func() tea.Msg {
+		var lines []string
+		for _, entry := range entries {
+			line := ""
+			if !entry.Timestamp.IsZero() {
+				line = entry.Timestamp.Format("2006-01-02 15:04:05") + " "
+			}
+			if len(m.centralLogTargets) > 1 {
+				name := entry.ContainerName
+				if name == "" {
+					name = entry.ContainerID
+				}
+				line += "[" + name + "] "
+			}
+			line += entry.Message
+			lines = append(lines, line)
+		}
+		content := strings.Join(lines, "\n")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return errMsg{err}
+		}
+		return actionDoneMsg{"Exported", fmt.Sprintf("%d lines to %s", len(lines), path)}
+	}
+}
+
+func (m Model) promptExportDetailLogs() (tea.Model, tea.Cmd) {
+	m.dialog = dialogInput
+	m.inputPrompt = "Export logs to file:"
+	m.inputText = ""
+	m.inputSubmit = func(path string) tea.Cmd {
+		return m.exportDetailLogs(path)
+	}
+	return m, nil
+}
+
+func (m Model) exportDetailLogs(path string) tea.Cmd {
+	entries := m.logViewer.Entries
+	return func() tea.Msg {
+		var lines []string
+		for _, entry := range entries {
+			line := ""
+			if !entry.Timestamp.IsZero() {
+				line = entry.Timestamp.Format("2006-01-02 15:04:05") + " "
+			}
+			line += entry.Message
+			lines = append(lines, line)
+		}
+		content := strings.Join(lines, "\n")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return errMsg{err}
+		}
+		return actionDoneMsg{"Exported", fmt.Sprintf("%d lines to %s", len(lines), path)}
+	}
 }
 
 func (m *Model) syncTerminalScroll() {
@@ -964,12 +1362,18 @@ func (m Model) updateImages(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "p":
+		m.loading = true
 		m.dialog = dialogInput
 		m.inputPrompt = "Pull image (e.g. nginx:latest):"
 		m.inputText = ""
 		m.inputSubmit = func(ref string) tea.Cmd {
 			return m.pullImage(ref)
 		}
+	case "P":
+		m.dialog = dialogConfirm
+		m.confirmMsg = "Prune dangling images?\n\nThis removes untagged images not referenced by containers."
+		m.loading = true
+		m.confirmOK = m.pruneDanglingImages()
 	case "r":
 		m.loading = true
 		return m, m.fetchImages()
@@ -1098,5 +1502,138 @@ func (m Model) confirmPruneVolumes() (tea.Model, tea.Cmd) {
 	m.dialog = dialogConfirm
 	m.confirmMsg = "Remove all orphaned volumes?\n\nThis cannot be undone."
 	m.confirmOK = func() tea.Msg { return m.pruneVolumesCmd() }
+	return m, nil
+}
+
+// ── Networks ─────────────────────────────────────────────────────────────
+
+func (m Model) fetchNetworks() tea.Cmd {
+	return func() tea.Msg {
+		nets, err := m.client.ListNetworks()
+		if err != nil {
+			return errMsg{err}
+		}
+		return networksMsg(nets)
+	}
+}
+
+func (m Model) updateNetworks(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "h":
+		m.view = viewList
+	case "up", "k":
+		if m.netCursor > 0 {
+			m.netCursor--
+		}
+	case "down", "j":
+		if m.netCursor < len(m.networks)-1 {
+			m.netCursor++
+		}
+	case "home", "g":
+		m.netCursor = 0
+	case "end", "G":
+		if n := len(m.networks); n > 0 {
+			m.netCursor = n - 1
+		}
+	case " ":
+		if m.netCursor < len(m.networks) {
+			id := m.networks[m.netCursor].ID
+			if m.selected[id] {
+				delete(m.selected, id)
+			} else {
+				m.selected[id] = true
+			}
+		}
+	case "a":
+		if len(m.selected) > 0 {
+			m.selected = make(map[string]bool)
+		} else {
+			for _, net := range m.networks {
+				m.selected[net.ID] = true
+			}
+		}
+	case "d":
+		return m.confirmRemoveNetworks()
+	case "/":
+		m.filtering = true
+		m.filterText = ""
+	case "ctrl+u":
+		m.filterText = ""
+		m.netCursor = 0
+	case "r":
+		m.loading = true
+		return m, m.fetchNetworks()
+	case "t":
+		m.dialog = dialogTheme
+	}
+	return m, nil
+}
+
+func (m Model) confirmRemoveNetworks() (tea.Model, tea.Cmd) {
+	if len(m.selected) == 0 && m.netCursor < len(m.networks) {
+		m.selected[m.networks[m.netCursor].ID] = true
+	}
+	if len(m.selected) == 0 {
+		return m, nil
+	}
+	names := make([]string, 0, len(m.selected))
+	for id := range m.selected {
+		for _, net := range m.networks {
+			if net.ID == id {
+				names = append(names, net.Name)
+				break
+			}
+		}
+	}
+	msg := fmt.Sprintf("Remove %d network(s)?\n\n  %s\n\nThis cannot be undone.", len(names), strings.Join(names, ", "))
+	m.dialog = dialogConfirm
+	m.confirmMsg = msg
+	m.confirmOK = func() tea.Msg {
+		var cmds []tea.Cmd
+		for id := range m.selected {
+			cmds = append(cmds, m.removeNetwork(id))
+		}
+		m.selected = make(map[string]bool)
+		return tea.Batch(cmds...)
+	}
+	return m, nil
+}
+
+func (m Model) removeNetwork(id string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.client.RemoveNetwork(id); err != nil {
+			return errMsg{err}
+		}
+		for _, net := range m.networks {
+			if net.ID == id {
+				return networkActionDoneMsg{"Removed", net.Name}
+			}
+		}
+		return networkActionDoneMsg{"Removed", id}
+	}
+}
+
+func (m Model) updateNotifications(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q", "h":
+		m.view = viewList
+	case "up", "k":
+		if m.notifyCursor > 0 {
+			m.notifyCursor--
+		}
+	case "down", "j":
+		if m.notifyCursor < len(m.notifyHistory)-1 {
+			m.notifyCursor++
+		}
+	case "home", "g":
+		m.notifyCursor = 0
+	case "end", "G":
+		if n := len(m.notifyHistory); n > 0 {
+			m.notifyCursor = n - 1
+		}
+	case "c":
+		m.notifyHistory = nil
+		m.notifyCursor = 0
+	}
 	return m, nil
 }

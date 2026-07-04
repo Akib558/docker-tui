@@ -27,6 +27,10 @@ func (m Model) View() string {
 		content = m.viewCentralLogs()
 	case viewVolumes:
 		content = m.viewVolumes()
+	case viewNetworks:
+		content = m.viewNetworks()
+	case viewNotifications:
+		content = m.viewNotifications()
 	}
 
 	// Pad to full terminal height to prevent flicker

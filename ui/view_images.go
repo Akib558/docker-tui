@@ -18,14 +18,24 @@ func (m Model) viewImages() string {
 	if m.loading {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
 			Render("  Loading images...") + "\n")
+		if m.imagePullProgress != "" {
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSecondary).Render(m.imagePullProgress) + "\n")
+		}
 		b.WriteString(m.imagesHelp(w))
 		return b.String()
 	}
 	if len(m.images) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
 			Render("  No images found.") + "\n")
+		if m.imagePullProgress != "" {
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSecondary).Render(m.imagePullProgress) + "\n")
+		}
 		b.WriteString(m.imagesHelp(w))
 		return b.String()
+	}
+
+	if m.imagePullProgress != "" {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSecondary).Render("Pull: "+truncate(m.imagePullProgress, max(w-6, 20))) + "\n\n")
 	}
 
 	tagW := max(w*35/100, 20)
@@ -77,11 +87,11 @@ func (m Model) viewImages() string {
 
 func (m Model) imagesHelp(w int) string {
 	keys := []struct{ key, desc string }{
-		{"j/k", "navigate"},
-		{"p", "pull image"},
+		{"j/k", "nav"},
+		{"p", "pull"},
+		{"P", "prune"},
 		{"d", "remove"},
-		{"r", "refresh"},
-		{"t", "theme"},
+		{"?", "help"},
 		{"esc", "back"},
 	}
 	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))

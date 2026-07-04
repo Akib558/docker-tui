@@ -20,6 +20,8 @@ const (
 	viewEvents
 	viewLogs
 	viewVolumes
+	viewNetworks
+	viewNotifications
 )
 
 type dialogMode int
@@ -29,6 +31,8 @@ const (
 	dialogConfirm
 	dialogTheme
 	dialogInput
+	dialogHelp
+	dialogCommandPalette
 )
 
 // ── Detail tab indices ───────────────────────────────────────────────────
@@ -39,7 +43,9 @@ const (
 	tabEnv       = 2
 	tabLogs      = 3
 	tabTerminal  = 4
-	tabCount     = 5
+	tabDiff      = 5
+	tabProcesses = 6
+	tabCount     = 7
 )
 
 const historyLen = 60
@@ -49,13 +55,16 @@ const terminalBufferMax = 96 * 1024
 
 type Model struct {
 	// Docker
-	client     *docker.Client
-	containers []docker.ContainerInfo
-	inspected  *docker.ContainerInfo
-	images     []docker.ImageInfo
-	events     []docker.DockerEvent
-	volumes    []docker.VolumeInfo
-	volCursor  int
+	client            *docker.Client
+	containers        []docker.ContainerInfo
+	inspected         *docker.ContainerInfo
+	images            []docker.ImageInfo
+	imagePullProgress string
+	networks          []docker.NetworkResource
+	events            []docker.DockerEvent
+	volumes           []docker.VolumeInfo
+	volCursor         int
+	netCursor         int
 
 	// Stats
 	stats      map[string]*docker.ContainerResourceStats
@@ -83,6 +92,8 @@ type Model struct {
 	logCancel      func()
 	liveLogging    bool
 	diff           []docker.DiffEntry
+	processTop     docker.ContainerTop
+	processLoaded  bool
 	terminalInput  string
 	terminalOutput string
 	terminalFollow bool
@@ -90,6 +101,7 @@ type Model struct {
 	terminalWriter io.Writer
 	terminalActive bool
 	terminalShell  string
+	logRegex       bool
 
 	// Centralized logs
 	centralLogs         LogViewerState
@@ -97,9 +109,11 @@ type Model struct {
 	centralLogCancels   []func()
 	centralLogFiltering bool
 	centralLogFilter    string
+	centralLogRegex     bool
+	centralLogClipboard bool
+	centralLogCursor    int
 
 	// Events streaming
-	eventsCtx    interface{} // unused field kept for future use
 	eventsCancel func()
 
 	// Filter
@@ -117,27 +131,76 @@ type Model struct {
 	inputPrompt string
 	inputSubmit func(string) tea.Cmd
 
+	// Command palette
+	commandPaletteText    string
+	commandPaletteCursor  int
+	commandPaletteResults []Command
+
 	// Theme
 	themeCursor int
 
 	// Notification
-	notification string
-	notifyIsErr  bool
-	notifyTime   time.Time
+	notification  string
+	notifyIsErr   bool
+	notifyTime    time.Time
+	notifyHistory []Notification
+	notifyCursor  int
 
-	// Config / refresh
+	// Config and state
 	cfg             *config.Config
 	refreshInterval time.Duration
+	loading         bool
+	lastRefresh     time.Time
+	err             error
+	startTime       time.Time
+	tickCount       int
+	groupByCompose  bool
+	sortMode        int
 
-	// Meta
-	loading     bool
-	err         error
-	startTime   time.Time
-	lastRefresh time.Time
-	tickCount   int
+	// Reconnection
+	reconnecting      bool
+	reconnectAttempts int
+}
 
-	// Compose grouping toggle
-	groupByCompose bool
+type Command struct {
+	Name        string
+	Description string
+	Action      func() tea.Cmd
+}
+
+type Notification struct {
+	Message   string
+	IsError   bool
+	Timestamp time.Time
+}
+
+// Sort modes
+const (
+	sortName = iota
+	sortState
+	sortCPU
+	sortMemory
+	sortImage
+	sortModeCount
+)
+
+func statePriority(state string) int {
+	switch state {
+	case "running":
+		return 0
+	case "restarting":
+		return 1
+	case "paused":
+		return 2
+	case "created":
+		return 3
+	case "exited":
+		return 4
+	case "dead":
+		return 5
+	default:
+		return 6
+	}
 }
 
 // ── Messages ────────────────────────────────────────────────────────────
@@ -155,9 +218,16 @@ type statsMsg struct {
 	sysLoad docker.SystemLoad
 }
 type diffMsg []docker.DiffEntry
+type topMsg struct{ top docker.ContainerTop }
 type imageActionDoneMsg struct{ action, name string }
+type pullProgressMsg struct {
+	text string
+	next tea.Cmd
+}
 type volumesMsg []docker.VolumeInfo
 type volumeActionDoneMsg struct{ action, name string }
+type networksMsg []docker.NetworkResource
+type networkActionDoneMsg struct{ action, name string }
 type execDoneMsg struct{ err error }
 type loadHistMsg struct {
 	cpu map[string][]float64
@@ -207,6 +277,11 @@ type terminalChunkMsg struct {
 }
 type terminalDoneMsg struct {
 	err error
+}
+
+type reconnectMsg struct {
+	success bool
+	err     error
 }
 
 type initMsg struct {
