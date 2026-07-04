@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/akib558/docker-tui/docker"
 	"github.com/charmbracelet/lipgloss"
@@ -54,6 +55,10 @@ func (m Model) viewDetail() string {
 		tabContent = m.renderLogsTab(contentWidth)
 	case tabTerminal:
 		tabContent = m.renderTerminalTab(c, contentWidth)
+	case tabDiff:
+		tabContent = m.renderDiffTab(c, contentWidth)
+	case tabProcesses:
+		tabContent = m.renderProcessesTab(c, contentWidth)
 	}
 
 	lines := strings.Split(tabContent, "\n")
@@ -96,7 +101,7 @@ func (m Model) viewDetail() string {
 }
 
 func (m Model) renderDetailTabs(width int) string {
-	tabNames := []string{"Info", "Resources", "Environment", "Logs", "Terminal"}
+	tabNames := []string{"Info", "Resources", "Environment", "Logs", "Terminal", "Diff", "Processes"}
 	parts := make([]string, 0, len(tabNames))
 	for i, t := range tabNames {
 		num := lipgloss.NewStyle().Foreground(colorDim).Render(fmt.Sprintf("%d:", i+1))
@@ -120,6 +125,21 @@ func (m Model) renderInfoTab(c *docker.ContainerInfo, width int) string {
 		b.WriteString(m.renderInfoTwoCol(c, width))
 	} else {
 		b.WriteString(m.renderInfoSingleCol(c, width))
+	}
+
+	// Resource limits section
+	if c.CPUQuota > 0 || c.MemoryLimit > 0 || c.RestartPolicy != "" {
+		b.WriteString("\n" + sectionHeaderStyle.Width(width).Render("  Resource Limits") + "\n")
+		if c.CPUQuota > 0 {
+			cpus := float64(c.CPUQuota) / float64(c.CPUPeriod)
+			b.WriteString(renderKV("CPU Quota", fmt.Sprintf("%.2f cores", cpus)))
+		}
+		if c.MemoryLimit > 0 {
+			b.WriteString(renderKV("Memory Limit", formatBytes(uint64(c.MemoryLimit))))
+		}
+		if c.RestartPolicy != "" {
+			b.WriteString(renderKV("Restart Policy", c.RestartPolicy))
+		}
 	}
 
 	if len(c.Ports) > 0 {
@@ -188,6 +208,12 @@ func (m Model) renderInfoTwoCol(c *docker.ContainerInfo, width int) string {
 
 	right.WriteString(sectionHeaderStyle.Width(halfW).Render("  Runtime") + "\n")
 	right.WriteString(renderKV("Status", c.Status))
+	if c.Health != "" {
+		right.WriteString(renderHealthKV("Health", c.Health))
+	}
+	if !c.StartedAt.IsZero() && c.State == "running" {
+		right.WriteString(renderKV("Uptime", formatUptime(time.Since(c.StartedAt))))
+	}
 	if !c.Created.IsZero() {
 		right.WriteString(renderKV("Created", c.Created.Format("2006-01-02 15:04")))
 	}
@@ -195,7 +221,7 @@ func (m Model) renderInfoTwoCol(c *docker.ContainerInfo, width int) string {
 		right.WriteString(renderKV("Platform", c.Platform))
 	}
 	if c.RestartCount > 0 {
-		right.WriteString(renderKV("Restarts", fmt.Sprintf("%d", c.RestartCount)))
+		right.WriteString(renderRestartKV("Restarts", c.RestartCount))
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
@@ -216,11 +242,17 @@ func (m Model) renderInfoSingleCol(c *docker.ContainerInfo, width int) string {
 		b.WriteString(renderKV("Created", c.Created.Format("2006-01-02 15:04:05")))
 	}
 	b.WriteString(renderKV("Status", c.Status))
+	if c.Health != "" {
+		b.WriteString(renderHealthKV("Health", c.Health))
+	}
+	if !c.StartedAt.IsZero() && c.State == "running" {
+		b.WriteString(renderKV("Uptime", formatUptime(time.Since(c.StartedAt))))
+	}
 	if c.Platform != "" {
 		b.WriteString(renderKV("Platform", c.Platform))
 	}
 	if c.RestartCount > 0 {
-		b.WriteString(renderKV("Restarts", fmt.Sprintf("%d", c.RestartCount)))
+		b.WriteString(renderRestartKV("Restarts", c.RestartCount))
 	}
 	return b.String()
 }
@@ -381,7 +413,7 @@ func (m Model) renderLogsTab(width int) string {
 		return b.String()
 	}
 	for _, entry := range rows {
-		b.WriteString(renderLogMessage(entry, width, false, m.logViewer.Targets) + "\n")
+		b.WriteString(renderLogMessage(entry, width, false, m.logViewer.Targets, m.cfg) + "\n")
 	}
 	return b.String()
 }
@@ -420,5 +452,100 @@ func (m Model) renderTerminalTab(c *docker.ContainerInfo, width int) string {
 	}
 	prompt := "  > " + m.terminalInput
 	b.WriteString("\n" + inputStyle.Width(width-2).Render(prompt))
+	return b.String()
+}
+
+// ── Diff tab ────────────────────────────────────────────────────────────
+
+func (m Model) renderDiffTab(c *docker.ContainerInfo, width int) string {
+	var b strings.Builder
+	b.WriteString(sectionHeaderStyle.Width(width).Render("  Filesystem Changes") + "\n")
+
+	if m.diff == nil {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("Press 'f' to load filesystem changes") + "\n")
+		return b.String()
+	}
+
+	if len(m.diff) == 0 {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSuccess).
+			Render("No filesystem changes detected.") + "\n")
+		return b.String()
+	}
+
+	added, modified, deleted := 0, 0, 0
+	for _, d := range m.diff {
+		switch d.Kind {
+		case "A":
+			added++
+		case "M":
+			modified++
+		case "D":
+			deleted++
+		}
+	}
+
+	summary := fmt.Sprintf("  %d added  %d modified  %d deleted", added, modified, deleted)
+	b.WriteString(lipgloss.NewStyle().Foreground(colorSubtext).Render(summary) + "\n\n")
+
+	for _, d := range m.diff {
+		var icon string
+		var style lipgloss.Style
+		switch d.Kind {
+		case "A":
+			icon = "+"
+			style = lipgloss.NewStyle().Foreground(colorSuccess)
+		case "D":
+			icon = "-"
+			style = lipgloss.NewStyle().Foreground(colorDanger)
+		default:
+			icon = "~"
+			style = lipgloss.NewStyle().Foreground(colorWarning)
+		}
+		path := d.Path
+		if lipgloss.Width(path) > width-6 {
+			path = truncate(path, width-6)
+		}
+		b.WriteString("  " + style.Bold(true).Render(icon+" ") + style.Render(path) + "\n")
+	}
+	return b.String()
+}
+
+func (m Model) renderProcessesTab(c *docker.ContainerInfo, width int) string {
+	var b strings.Builder
+	b.WriteString(sectionHeaderStyle.Width(width).Render("  Running Processes") + "\n")
+
+	if c.State != "running" && c.State != "paused" {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("Processes are available for running or paused containers.") + "\n")
+		return b.String()
+	}
+
+	if !m.processLoaded {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("Loading process list...") + "\n")
+		return b.String()
+	}
+
+	if len(m.processTop.Titles) == 0 {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("No process information available. Press 'p' to refresh.") + "\n")
+		return b.String()
+	}
+
+	header := strings.Join(m.processTop.Titles, "  ")
+	b.WriteString("  " + tableHeaderStyle.Render(truncate(header, max(width-4, 10))) + "\n")
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(colorDim).Render(strings.Repeat("-", max(width-4, 10))) + "\n")
+
+	if len(m.processTop.Processes) == 0 {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("No processes found.") + "\n")
+		return b.String()
+	}
+
+	for _, row := range m.processTop.Processes {
+		line := strings.Join(row, "  ")
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorText).Render(truncate(line, max(width-4, 10))) + "\n")
+	}
+	b.WriteString("\n  " + lipgloss.NewStyle().Foreground(colorMuted).Render("Press 'p' to refresh process list."))
 	return b.String()
 }

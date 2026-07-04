@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"time"
 
 	"github.com/akib558/docker-tui/config"
 	"github.com/akib558/docker-tui/docker"
@@ -239,6 +240,16 @@ func (m Model) getDiff(id string) tea.Cmd {
 	}
 }
 
+func (m Model) getTop(id string) tea.Cmd {
+	return func() tea.Msg {
+		top, err := m.client.GetContainerTop(id)
+		if err != nil {
+			return errMsg{err}
+		}
+		return topMsg{top: top}
+	}
+}
+
 func (m Model) startContainer(id, name string) tea.Cmd {
 	return func() tea.Msg {
 		if err := m.client.StartContainer(id); err != nil {
@@ -266,12 +277,89 @@ func (m Model) restartContainer(id, name string) tea.Cmd {
 	}
 }
 
-func (m Model) pullImage(ref string) tea.Cmd {
+func (m Model) pauseContainer(id, name string) tea.Cmd {
 	return func() tea.Msg {
-		if err := m.client.PullImage(ref); err != nil {
+		if err := m.client.PauseContainer(id); err != nil {
 			return errMsg{err}
 		}
-		return imageActionDoneMsg{"Pulled", ref}
+		return actionDoneMsg{"Paused", name}
+	}
+}
+
+func (m Model) unpauseContainer(id, name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.client.UnpauseContainer(id); err != nil {
+			return errMsg{err}
+		}
+		return actionDoneMsg{"Unpaused", name}
+	}
+}
+
+func (m Model) killContainer(id, name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.client.KillContainer(id, "SIGKILL"); err != nil {
+			return errMsg{err}
+		}
+		return actionDoneMsg{"Killed", name}
+	}
+}
+
+func (m Model) pullImage(ref string) tea.Cmd {
+	return func() tea.Msg {
+		ch := make(chan string, 128)
+		errCh := make(chan error, 1)
+
+		go func() {
+			defer close(ch)
+			errCh <- m.client.PullImageWithProgress(ref, func(progress string) {
+				select {
+				case ch <- progress:
+				default:
+				}
+			})
+		}()
+
+		var readNext tea.Cmd
+		readNext = func() tea.Msg {
+			progress, ok := <-ch
+			if ok {
+				return pullProgressMsg{text: progress, next: readNext}
+			}
+			if err := <-errCh; err != nil {
+				return errMsg{err}
+			}
+			return imageActionDoneMsg{"Pulled", ref}
+		}
+
+		return pullProgressMsg{text: "Starting pull...", next: readNext}
+	}
+}
+
+func (m Model) pruneDanglingImages() tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.PruneDanglingImages()
+		if err != nil {
+			return errMsg{err}
+		}
+		reclaimed := formatBytes(result.SpaceReclaimed)
+		return imageActionDoneMsg{"Pruned images", fmt.Sprintf("%d deleted (%s)", len(result.DeletedRefs), reclaimed)}
+	}
+}
+
+func (m Model) pruneSystem() tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.client.SystemPrune()
+		if err != nil {
+			return errMsg{err}
+		}
+		summary := fmt.Sprintf("containers:%d images:%d networks:%d volumes:%d reclaimed:%s",
+			result.ContainersDeleted,
+			result.ImagesDeleted,
+			result.NetworksDeleted,
+			result.VolumesDeleted,
+			formatBytes(result.SpaceReclaimed),
+		)
+		return actionDoneMsg{"System prune complete", summary}
 	}
 }
 
@@ -312,4 +400,20 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 	}
 	go config.Save(m.cfg)
 	return m, tea.Quit
+}
+
+func (m Model) reconnect() tea.Cmd {
+	return tea.Tick(time.Duration(m.reconnectAttempts)*2*time.Second, func(t time.Time) tea.Msg {
+		client, err := docker.NewClient()
+		if err != nil {
+			return reconnectMsg{success: false, err: err}
+		}
+		_, err = client.ListContainers()
+		if err != nil {
+			client.Close()
+			return reconnectMsg{success: false, err: err}
+		}
+		m.client = client
+		return reconnectMsg{success: true}
+	})
 }

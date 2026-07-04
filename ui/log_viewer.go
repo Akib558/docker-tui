@@ -1,13 +1,17 @@
 package ui
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/akib558/docker-tui/docker"
+	"github.com/aymanbagabas/go-osc52/v2"
 	"hash/fnv"
 	"regexp"
 	"sort"
-	"strings"
 	"time"
-
-	"github.com/akib558/docker-tui/docker"
 )
 
 const (
@@ -41,13 +45,16 @@ type LogEntry struct {
 }
 
 type LogViewerState struct {
-	Entries    []LogEntry
-	Targets    map[string]LogTarget
-	Scroll     int
-	Follow     bool
-	Filter     string
-	MaxEntries int
-	nextSeq    int64
+	Entries       []LogEntry
+	Targets       map[string]LogTarget
+	Scroll        int
+	Follow        bool
+	Filter        string
+	UseRegex      bool
+	SelectedIndex int
+	LogCursor     int
+	MaxEntries    int
+	nextSeq       int64
 }
 
 func NewLogViewerState(maxEntries int, targets []LogTarget) LogViewerState {
@@ -165,15 +172,41 @@ func (s *LogViewerState) SetFilter(filter string) {
 	s.normalize(1)
 }
 
+func (s *LogViewerState) SetUseRegex(useRegex bool) {
+	s.UseRegex = useRegex
+}
+
 func (s LogViewerState) FilteredEntries() []LogEntry {
 	if s.Filter == "" {
 		return append([]LogEntry(nil), s.Entries...)
 	}
+	if s.UseRegex {
+		return s.filteredEntriesRegex()
+	}
+	return s.filteredEntriesSubstring()
+}
+
+func (s LogViewerState) filteredEntriesSubstring() []LogEntry {
 	q := strings.ToLower(s.Filter)
 	out := make([]LogEntry, 0, len(s.Entries))
 	for _, entry := range s.Entries {
 		if strings.Contains(strings.ToLower(entry.ContainerName), q) ||
 			strings.Contains(strings.ToLower(entry.Message), q) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func (s LogViewerState) filteredEntriesRegex() []LogEntry {
+	pattern := "(?i)" + s.Filter
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return s.filteredEntriesSubstring()
+	}
+	out := make([]LogEntry, 0, len(s.Entries))
+	for _, entry := range s.Entries {
+		if re.MatchString(entry.Message) || re.MatchString(entry.ContainerName) {
 			out = append(out, entry)
 		}
 	}
@@ -273,4 +306,33 @@ func SortLogEntries(entries []LogEntry) {
 		}
 		return a.Sequence < b.Sequence
 	})
+}
+
+func CopyToClipboard(text string) error {
+	return copyToSystemClipboard(text)
+}
+
+func copyToSystemClipboard(text string) error {
+	// Try wayland first, then xclip, then OSC52
+	if err := copyViaWayland(text); err == nil {
+		return nil
+	}
+	if err := copyViaXclip(text); err == nil {
+		return nil
+	}
+	// Fallback to OSC52
+	_, err := fmt.Fprint(os.Stderr, osc52.New(text))
+	return err
+}
+
+func copyViaWayland(text string) error {
+	cmd := exec.Command("wayland-copy")
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
+}
+
+func copyViaXclip(text string) error {
+	cmd := exec.Command("xclip", "-selection", "clipboard")
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
 }

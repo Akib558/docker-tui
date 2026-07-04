@@ -90,15 +90,12 @@ func (m Model) viewVolumes() string {
 
 func (m Model) volumesHelp(w int) string {
 	keys := []struct{ key, desc string }{
-		{"j/k", "navigate"},
+		{"j/k", "nav"},
 		{"space", "select"},
-		{"a", "select all"},
 		{"d", "remove"},
-		{"p", "prune orphaned"},
+		{"p", "prune"},
 		{"/", "filter"},
-		{"ctrl+u", "clear filter"},
-		{"r", "refresh"},
-		{"t", "theme"},
+		{"?", "help"},
 		{"esc", "back"},
 	}
 	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))

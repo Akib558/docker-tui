@@ -119,12 +119,18 @@ func ThemeIndex(name string) int {
 
 // ── Config ───────────────────────────────────────────────────────────────
 
+type LogHighlightPattern struct {
+	Pattern string `json:"pattern"`
+	Color   string `json:"color"`
+}
+
 type Config struct {
-	Theme           string            `json:"theme"`
-	RefreshSeconds  int               `json:"refresh_seconds"`
-	AlertCPU        float64           `json:"alert_cpu"`
-	AlertMem        float64           `json:"alert_mem"`
-	ContainerColors map[string]string `json:"container_colors"`
+	Theme                string                `json:"theme"`
+	RefreshSeconds       int                   `json:"refresh_seconds"`
+	AlertCPU             float64               `json:"alert_cpu"`
+	AlertMem             float64               `json:"alert_mem"`
+	ContainerColors      map[string]string     `json:"container_colors"`
+	LogHighlightPatterns []LogHighlightPattern `json:"log_highlight_patterns"`
 }
 
 var Default = Config{
@@ -133,6 +139,19 @@ var Default = Config{
 	AlertCPU:        80.0,
 	AlertMem:        80.0,
 	ContainerColors: map[string]string{},
+	LogHighlightPatterns: []LogHighlightPattern{
+		{Pattern: `(?i)\berror\b`, Color: "#FF5252"},
+		{Pattern: `(?i)\bfatal\b`, Color: "#FF5252"},
+		{Pattern: `(?i)\bcritical\b`, Color: "#FF5252"},
+		{Pattern: `(?i)\bwarn\b`, Color: "#FFD740"},
+		{Pattern: `(?i)\bwarning\b`, Color: "#FFD740"},
+		{Pattern: `(?i)\bpanic\b`, Color: "#FF5252"},
+		{Pattern: `(?i)\bexception\b`, Color: "#FF5252"},
+		{Pattern: `(?i)\bfailed\b`, Color: "#FF5252"},
+		{Pattern: `(?i)\btimeout\b`, Color: "#FFD740"},
+		{Pattern: `(?i)\bsuccess\b`, Color: "#00E676"},
+		{Pattern: `(?i)\bcompleted\b`, Color: "#00E676"},
+	},
 }
 
 func configPath() string {
@@ -151,6 +170,8 @@ func cloneStringMap(src map[string]string) map[string]string {
 func Load() *Config {
 	cfg := Default
 	cfg.ContainerColors = cloneStringMap(Default.ContainerColors)
+	cfg.LogHighlightPatterns = make([]LogHighlightPattern, len(Default.LogHighlightPatterns))
+	copy(cfg.LogHighlightPatterns, Default.LogHighlightPatterns)
 	data, err := os.ReadFile(configPath())
 	if err != nil {
 		return &cfg
@@ -163,6 +184,10 @@ func Load() *Config {
 		cfg.ContainerColors = map[string]string{}
 	}
 	cfg.ContainerColors = cloneStringMap(cfg.ContainerColors)
+	if cfg.LogHighlightPatterns == nil {
+		cfg.LogHighlightPatterns = make([]LogHighlightPattern, len(Default.LogHighlightPatterns))
+		copy(cfg.LogHighlightPatterns, Default.LogHighlightPatterns)
+	}
 	return &cfg
 }
 

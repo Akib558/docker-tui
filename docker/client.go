@@ -16,20 +16,26 @@ import (
 )
 
 type ContainerInfo struct {
-	ID           string
-	Name         string
-	Image        string
-	Status       string
-	State        string
-	Created      time.Time
-	Ports        []PortBinding
-	Mounts       []MountInfo
-	Network      map[string]NetworkInfo
-	Env          []string
-	Labels       map[string]string
-	Command      string
-	Platform     string
-	RestartCount int
+	ID            string
+	Name          string
+	Image         string
+	Status        string
+	State         string
+	Health        string
+	Created       time.Time
+	Ports         []PortBinding
+	Mounts        []MountInfo
+	Network       map[string]NetworkInfo
+	Env           []string
+	Labels        map[string]string
+	Command       string
+	Platform      string
+	RestartCount  int
+	StartedAt     time.Time
+	CPUQuota      int64
+	CPUPeriod     int64
+	MemoryLimit   int64
+	RestartPolicy string
 }
 
 type PortBinding struct {
@@ -71,6 +77,24 @@ type DockerOverview struct {
 	TotalMemory   uint64
 	CPUs          int
 	OS            string
+}
+
+type ContainerTop struct {
+	Titles    []string
+	Processes [][]string
+}
+
+type ImagePruneResult struct {
+	DeletedRefs    []string
+	SpaceReclaimed uint64
+}
+
+type SystemPruneResult struct {
+	ContainersDeleted int
+	ImagesDeleted     int
+	NetworksDeleted   int
+	VolumesDeleted    int
+	SpaceReclaimed    uint64
 }
 
 // internal: JSON shape returned by Docker stats API
@@ -179,12 +203,15 @@ func (c *Client) ListContainers() ([]ContainerInfo, error) {
 			}
 		}
 
+		health := parseHealthFromStatus(ct.Status)
+
 		result = append(result, ContainerInfo{
 			ID:      ct.ID[:12],
 			Name:    name,
 			Image:   ct.Image,
 			Status:  ct.Status,
 			State:   ct.State,
+			Health:  health,
 			Created: time.Unix(ct.Created, 0),
 			Ports:   ports,
 			Mounts:  mounts,
@@ -259,21 +286,42 @@ func (c *Client) InspectContainer(id string) (*ContainerInfo, error) {
 		env = info.Config.Env
 	}
 
+	var health string
+	if info.State.Health != nil {
+		health = info.State.Health.Status
+	}
+
+	var startedAt time.Time
+	if info.State.StartedAt != "" {
+		startedAt, _ = time.Parse(time.RFC3339Nano, info.State.StartedAt)
+	}
+
+	var restartPolicy string
+	if info.HostConfig != nil {
+		restartPolicy = string(info.HostConfig.RestartPolicy.Name)
+	}
+
 	return &ContainerInfo{
-		ID:           info.ID[:12],
-		Name:         name,
-		Image:        info.Config.Image,
-		Status:       info.State.Status,
-		State:        info.State.Status,
-		Created:      parseDockerTime(info.Created),
-		Ports:        ports,
-		Mounts:       mounts,
-		Network:      networks,
-		Env:          env,
-		Labels:       info.Config.Labels,
-		Command:      strings.Join(info.Config.Cmd, " "),
-		Platform:     info.Platform,
-		RestartCount: info.RestartCount,
+		ID:            info.ID[:12],
+		Name:          name,
+		Image:         info.Config.Image,
+		Status:        info.State.Status,
+		State:         info.State.Status,
+		Health:        health,
+		Created:       parseDockerTime(info.Created),
+		Ports:         ports,
+		Mounts:        mounts,
+		Network:       networks,
+		Env:           env,
+		Labels:        info.Config.Labels,
+		Command:       strings.Join(info.Config.Cmd, " "),
+		Platform:      info.Platform,
+		RestartCount:  info.RestartCount,
+		StartedAt:     startedAt,
+		CPUQuota:      info.HostConfig.CPUQuota,
+		CPUPeriod:     info.HostConfig.CPUPeriod,
+		MemoryLimit:   info.HostConfig.Memory,
+		RestartPolicy: restartPolicy,
 	}, nil
 }
 
@@ -316,6 +364,17 @@ func (c *Client) GetContainerDiff(id string) ([]DiffEntry, error) {
 	return result, nil
 }
 
+func (c *Client) GetContainerTop(id string) (ContainerTop, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	resp, err := c.cli.ContainerTop(ctx, id, []string{})
+	if err != nil {
+		return ContainerTop{}, err
+	}
+	return ContainerTop{Titles: resp.Titles, Processes: resp.Processes}, nil
+}
+
 func (c *Client) StartContainer(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -326,6 +385,24 @@ func (c *Client) StopContainer(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	return c.cli.ContainerStop(ctx, id, container.StopOptions{})
+}
+
+func (c *Client) PauseContainer(id string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return c.cli.ContainerPause(ctx, id)
+}
+
+func (c *Client) UnpauseContainer(id string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return c.cli.ContainerUnpause(ctx, id)
+}
+
+func (c *Client) KillContainer(id string, signal string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return c.cli.ContainerKill(ctx, id, signal)
 }
 
 func (c *Client) GetContainerLogs(id string, lines int) (string, error) {
@@ -562,4 +639,14 @@ func parseDockerTime(s string) time.Time {
 		return time.Time{}
 	}
 	return t
+}
+
+func parseHealthFromStatus(status string) string {
+	if idx := strings.LastIndex(status, "("); idx >= 0 {
+		end := strings.LastIndex(status, ")")
+		if end > idx {
+			return status[idx+1 : end]
+		}
+	}
+	return ""
 }

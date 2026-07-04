@@ -14,8 +14,12 @@ type ClientAPI interface {
 	StartContainer(id string) error
 	StopContainer(id string) error
 	RestartContainer(id string) error
+	PauseContainer(id string) error
+	UnpauseContainer(id string) error
+	KillContainer(id string, signal string) error
 	RemoveContainer(id string, force bool) error
 	GetContainerDiff(id string) ([]DiffEntry, error)
+	GetContainerTop(id string) (ContainerTop, error)
 	GetContainerLogs(id string, lines int) (string, error)
 	GetContainerLogRecords(id string, lines int) ([]LogRecord, error)
 	GetContainerLogsStream(ctx context.Context, id string) (io.ReadCloser, error)
@@ -30,6 +34,13 @@ type ClientAPI interface {
 	ListImages() ([]ImageInfo, error)
 	RemoveImage(id string, force bool) error
 	PullImage(ref string) error
+	PullImageWithProgress(ref string, onProgress func(string)) error
+	PruneDanglingImages() (ImagePruneResult, error)
+
+	// Networks
+	ListNetworks() ([]NetworkResource, error)
+	RemoveNetwork(id string) error
+	SystemPrune() (SystemPruneResult, error)
 
 	// Events
 	StreamEvents(ctx context.Context) <-chan DockerEvent

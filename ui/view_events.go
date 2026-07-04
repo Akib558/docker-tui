@@ -77,8 +77,9 @@ func (m Model) viewEvents() string {
 	}
 
 	keys := []struct{ key, desc string }{
-		{"j/k", "navigate"},
+		{"j/k", "nav"},
 		{"c", "clear"},
+		{"?", "help"},
 		{"esc", "back"},
 	}
 	b.WriteString("\n" + helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys))))
