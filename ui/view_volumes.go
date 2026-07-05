@@ -10,6 +10,7 @@ import (
 func (m Model) viewVolumes() string {
 	var b strings.Builder
 	w := m.width
+	vols := m.filteredVolumes()
 
 	b.WriteString(m.renderHeader(w))
 	var title string
@@ -32,6 +33,12 @@ func (m Model) viewVolumes() string {
 		b.WriteString(m.volumesHelp(w))
 		return b.String()
 	}
+	if len(vols) == 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  No volumes match filter.") + "\n")
+		b.WriteString(m.volumesHelp(w))
+		return b.String()
+	}
 
 	nameW := max(w*40/100, 20)
 	driverW := 12
@@ -49,39 +56,41 @@ func (m Model) viewVolumes() string {
 		tableHeaderStyle.Width(scopeW).Render("SCOPE")
 	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
 
-	visibleRows := max(3, m.height-9)
+	frame := m.volumesFrame()
+	visibleRows := frame.BodyRows
 	startIdx := 0
 	if m.volCursor >= visibleRows {
 		startIdx = m.volCursor - visibleRows + 1
 	}
-	endIdx := min(startIdx+visibleRows, len(m.volumes))
+	endIdx := min(startIdx+visibleRows, len(vols))
 
 	for i := startIdx; i < endIdx; i++ {
-		vol := m.volumes[i]
-		row := lipgloss.NewStyle().Width(nameW).Foreground(colorText).Render(truncate(vol.DisplayName(), nameW-1)) + "  " +
-			lipgloss.NewStyle().Width(driverW).Foreground(colorDim).Render(truncate(vol.Driver, driverW-1)) + "  " +
-			lipgloss.NewStyle().Width(mountW).Foreground(colorSubtext).Render(truncate(vol.Mountpoint, mountW-1)) + "  " +
-			lipgloss.NewStyle().Width(scopeW).Foreground(colorMuted).Render(vol.Scope)
+		vol := vols[i]
+		cells := []Cell{
+			{Text: truncate(vol.DisplayName(), nameW), Width: nameW, FG: colorText},
+			{Text: truncate(vol.Driver, driverW), Width: driverW, FG: colorDim},
+			{Text: truncate(vol.Mountpoint, mountW), Width: mountW, FG: colorSubtext},
+			{Text: vol.Scope, Width: scopeW, FG: colorMuted},
+		}
 		isSelected := m.selected[vol.Name]
-		rowW := w - 4
+		var kind ListRowKind
 		switch {
 		case i == m.volCursor && isSelected:
-			mark := selectedMarkStyle.Render("◉ ")
-			b.WriteString(mark + listItemSelStyle.Width(rowW).Render(row) + "\n")
+			kind = ListRowCursorSelected
 		case i == m.volCursor:
-			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(rowW).Render(row) + "\n")
+			kind = ListRowCursor
 		case isSelected:
-			mark := selectedMarkStyle.Render("◈ ")
-			b.WriteString(mark + listItemStyle.Background(colorBgSelected).Width(rowW).Render(row) + "\n")
+			kind = ListRowSelected
 		default:
-			b.WriteString("  " + listItemStyle.Width(rowW).Render(row) + "\n")
+			kind = ListRowNormal
 		}
+		b.WriteString(renderRowFromKind(w, kind, i, cells) + "\n")
 	}
 
-	if len(m.volumes) > visibleRows {
-		pct := float64(m.volCursor) / float64(max(len(m.volumes)-1, 1)) * 100
+	if len(vols) > visibleRows {
+		pct := float64(m.volCursor) / float64(max(len(vols)-1, 1)) * 100
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).
-			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.volCursor+1, len(m.volumes), pct)) + "\n")
+			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.volCursor+1, len(vols), pct)) + "\n")
 	}
 
 	b.WriteString("\n" + m.volumesHelp(w))
@@ -89,6 +98,14 @@ func (m Model) viewVolumes() string {
 }
 
 func (m Model) volumesHelp(w int) string {
+	if m.volFiltering {
+		return renderHelpBar(w, fmtKeys([]struct{ key, desc string }{
+			{"type", "search"},
+			{"backspace", "delete"},
+			{"enter/esc", "done"},
+			{"ctrl+u", "clear"},
+		}))
+	}
 	keys := []struct{ key, desc string }{
 		{"j/k", "nav"},
 		{"space", "select"},
@@ -98,5 +115,5 @@ func (m Model) volumesHelp(w int) string {
 		{"?", "help"},
 		{"esc", "back"},
 	}
-	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
+	return renderHelpBar(w, fmtKeys(keys))
 }

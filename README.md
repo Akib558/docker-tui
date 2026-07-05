@@ -1,97 +1,174 @@
-# docker-tui
+<div align="center">
 
-A fast, keyboard-first terminal UI for Docker. Use one terminal screen to monitor containers, inspect runtime details, follow logs, manage images, volumes, and networks without bouncing between long `docker` commands.
+# ⬡ docker-tui
 
-![CI](https://github.com/akib558/docker-tui/actions/workflows/ci.yml/badge.svg)
-![Go version](https://img.shields.io/badge/go-1.25%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+### Your Docker host, on one screen.
+
+A fast, keyboard-first terminal UI for Docker. Monitor, inspect, log, and control
+containers, images, volumes, and networks — without juggling long `docker` commands.
+
+[![CI](https://github.com/Akib558/docker-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/Akib558/docker-tui/actions/workflows/ci.yml)
+![Go](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-00E676)
+![Platforms](https://img.shields.io/badge/platforms-linux%20%C2%B7%20macOS%20%C2%B7%20windows-A5D6A7)
+[![Stars](https://img.shields.io/github/stars/Akib558/docker-tui?style=flat&color=FFD740)](https://github.com/Akib558/docker-tui/stargazers)
 
 ![docker-tui dashboard](docs/images/docker-tui-dashboard.png)
 
+</div>
+
+---
+
+## ⚡ Install in one line
+
+> Prebuilt static binaries — no Go, no dependencies. Just a running Docker daemon.
+
+**🐧 Linux · 🍎 macOS**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Akib558/docker-tui/main/scripts/install.sh | sh
+```
+
+**🪟 Windows (PowerShell)**
+
+```powershell
+irm https://raw.githubusercontent.com/Akib558/docker-tui/main/scripts/install.ps1 | iex
+```
+
+**🐹 With Go**
+
+```bash
+go install github.com/Akib558/docker-tui@latest
+```
+
+Then just run:
+
+```bash
+docker-tui
+```
+
+<sub>The one-line installers pull the latest release from GitHub. See [Installation](#installation) for manual downloads and building from source.</sub>
+
+---
+
 ## Why docker-tui
 
-Docker's CLI is powerful, but day-to-day container work often means repeating the same status checks, log tails, restarts, and inspect commands. docker-tui keeps those workflows in one responsive terminal interface.
+Docker's CLI is powerful, but day-to-day container work means repeating the same status
+checks, log tails, restarts, and inspects. docker-tui folds all of that into one responsive,
+keyboard-driven screen that feels right at home over SSH.
 
-Use it when you want to:
+| Instead of… | With docker-tui |
+| --- | --- |
+| `docker ps` + `docker stats` in two panes | One live dashboard with CPU/MEM bars and sparklines |
+| A `docker logs -f` window per service | One merged, color-tagged, filterable log stream |
+| Scrolling walls of `docker inspect` JSON | Seven labelled, navigable detail tabs |
+| A shell loop to restart a group | Multi-select and one keypress |
+| Remembering `prune` flags per resource | Guided prune with a confirmation step |
+
+**Reach for it when you want to:**
 
 - See container status, ports, CPU, memory, and Docker host health at a glance.
 - Jump from a container list into details, logs, environment, resource history, or a shell.
-- Follow logs from one container or many containers with stable labels and filtering.
+- Follow logs from one or many containers with stable color labels and filtering.
 - Start, stop, restart, kill, pause, and remove containers without leaving the keyboard.
-- Manage volumes and networks alongside containers in the same interface.
-- Keep a lightweight tool that works over SSH and inside terminal-first workflows.
+- Manage images, volumes, and networks alongside containers in the same interface.
+- Keep a single lightweight binary that works great in terminal-first and SSH workflows.
 
-## Highlights
+## Features
 
-### Live Container Dashboard
+### 🖥️ Live container dashboard
 
-- Container list ordered running-first, then by name — so active workloads stay at the top.
-- State-grouped overview panels (RUNNING / PAUSED / STOPPED) with image and uptime info.
-- Host memory and load overview on Linux.
-- Persistent CPU and memory sparklines so short restarts do not erase context.
-- Container uptime and restart count tracking in detail view.
-- Filesystem diff view showing changes to the container writable layer.
-- Adjustable refresh interval and manual refresh.
-- Sort mode cycling (name, state, CPU, memory, image) with `S`.
+- Container list ordered running-first, then by name — active workloads stay on top.
+- Live **status strip**: running / paused / stopped / created counts, plus last-refresh age.
+- Inline **CPU % and MEM % bars** per container, color-graded green → amber → red.
+- Host memory and load overview (Linux).
+- Persistent **CPU/MEM sparklines** cached to disk, so short restarts don't erase context.
+- Container **uptime**, **restart-count**, and **health-check** status.
+- **Responsive columns** — NAME/STATUS on narrow terminals; IMAGE, CPU, MEM, PORTS, ID, and I/O added as the window widens.
+- Adjustable refresh interval, manual refresh, and sort cycling (name → state → CPU → memory → image).
 
-### Operational Controls
+### 📜 Logs built for real work
 
-- Start, stop, restart, kill, and pause/unpause one container or a multi-selected group.
-- Remove containers or run `docker system prune` with a confirmation step.
-- Open an external `docker exec -it` session from the list or detail view.
-- Use the embedded terminal tab for an in-app shell session when available.
-- Command palette (`:`) for quick access to any action by name.
+- Per-container **Logs tab** in the detail view.
+- **Centralized logs** across selected containers, or all running containers when nothing is selected.
+- Stable **per-container color tags** so interleaved streams stay readable.
+- **Severity coloring** out of the box (ERROR / WARN / INFO / DEBUG) plus configurable highlight patterns.
+- Timestamp-aware ordering, text/**regex** filtering, and **follow mode** that pauses when you scroll up.
+- **Copy** a line (`y`) or **export** the whole buffer to a file (`E`).
 
-### Logs Built For Real Work
+### 🔍 Deep container inspection
 
-- Detail log tab for the current container.
-- Centralized logs view for selected containers, or all running containers when nothing is selected.
-- Timestamp-aware log ordering with deterministic fallback ordering.
-- Filter logs by plain text or regex; toggle regex with `r` while filtering.
-- Follow mode that pauses when you scroll up and resumes at the bottom.
-- Copy a log line to clipboard with `y`; export the full log buffer to a file with `E`.
+Seven tabs per container — no more piping `docker inspect` through `jq`:
 
-### Docker Inventory
+- **Info** — identity, runtime, resource limits, ports, mounts, networks, and compose labels.
+- **Resources** — CPU/memory history graphs.
+- **Environment** — environment variables.
+- **Logs** — the focused per-container log view.
+- **Terminal** — an embedded shell session, in-app.
+- **Diff** — filesystem changes on the container's writable layer.
+- **Processes** — running processes inside the container (`docker top`).
 
-- Images view for listing, pulling, removing, and pruning dangling images.
-- Volumes view for listing, removing, and pruning orphaned volumes with multi-select.
-- Networks view for listing and removing networks.
-- Detail tabs for container info, resources, environment, logs, terminal, filesystem diff, and processes.
+### ⚡ Operational controls
 
-### Notification Center
+- Start, stop, restart, kill, and pause/unpause — one container or a multi-selected group.
+- Remove containers, or run `docker system prune` with a confirmation step.
+- Open an external `docker exec -it` session, or use the embedded terminal tab.
+- **Command palette** (`:`) for fuzzy access to any action by name.
 
-- Persistent notification history for every action result and connection event.
-- Open the notification log with `N` at any time; clear with `c`.
+### 📦 Full Docker inventory
 
-### Terminal Ergonomics
+- **Images** — list, pull, remove, and prune dangling images.
+- **Volumes** — list, remove, prune orphaned volumes, filter, and multi-select.
+- **Networks** — list, remove, filter, and multi-select.
 
-- Keyboard-first navigation with mouse support for row selection and scrolling.
-- Responsive layout for narrow and wide terminals.
-- Ten built-in themes, switchable at runtime.
+### 🔔 Notifications & 🎨 ergonomics
+
+- Persistent **notification center** (`N`) for every action result and connection event.
+- **CPU/memory threshold alerts**.
+- **Ten built-in themes**, switchable at runtime (`t`).
+- Keyboard-first navigation with mouse support; responsive layout for any terminal size.
 - JSON config for refresh interval, alert thresholds, theme, and stable log colors.
+
+## Screenshots
+
+**Centralized logs — merge, color-tag, filter, and follow many containers at once**
+
+![Centralized logs](docs/images/central-logs.png)
+
+**Detail view — seven tabs of everything `docker inspect` knows**
+
+![Container detail](docs/images/detail-view.png)
 
 ## Installation
 
-### Pre-built Binaries
+### One-line installers (recommended)
 
-Download a release archive from [GitHub Releases](https://github.com/akib558/docker-tui/releases), then place the `docker-tui` binary somewhere on your `PATH`.
+See [Install in one line](#-install-in-one-line) above. The scripts detect your OS and
+architecture, download the matching release archive, and drop the binary onto your PATH
+(`~/.local/bin` on Linux/macOS, `%LOCALAPPDATA%\docker-tui\bin` on Windows).
 
-### Go Install
+### Pre-built binaries
+
+Download an archive for your platform from [GitHub Releases](https://github.com/Akib558/docker-tui/releases)
+(Linux, macOS, and Windows for amd64 and arm64), extract it, and place the `docker-tui`
+binary somewhere on your `PATH`.
+
+### Go install
 
 ```bash
-go install github.com/akib558/docker-tui@latest
+go install github.com/Akib558/docker-tui@latest
 ```
 
-### Build From Source
+### Build from source
 
 ```bash
-git clone https://github.com/akib558/docker-tui.git
+git clone https://github.com/Akib558/docker-tui.git
 cd docker-tui
 make build
 ./docker-tui
 ```
 
-To install the locally built command into your Go binary directory:
+Install the locally built binary into your Go bin directory:
 
 ```bash
 make install
@@ -99,19 +176,18 @@ make install
 
 ## Requirements
 
-- Docker daemon running and accessible through the local socket or `DOCKER_HOST`.
+- Docker daemon running and reachable through the local socket or `DOCKER_HOST`.
 - Terminal with 256-color support.
 - Go 1.25 or newer when building from source.
 
-Host memory and load metrics are Linux-specific. Core Docker workflows still work on other supported build targets when Docker is reachable.
+Host memory and load metrics are Linux-specific. Core Docker workflows work on all supported
+platforms whenever Docker is reachable.
 
-## Quick Start
+## Quick start
 
 ```bash
 docker-tui
 ```
-
-Common workflow:
 
 1. Move through containers with `j` / `k` or arrow keys.
 2. Press `enter` to inspect the selected container.
@@ -119,10 +195,10 @@ Common workflow:
 4. Press `L` from the list to open centralized logs.
 5. Press `/` to filter containers or logs.
 6. Press `s`, `R`, or `d` to start/stop, restart, or remove containers.
-7. Press `:` to open the command palette.
+7. Press `:` to open the command palette, or `?` for the full keyboard reference.
 8. Press `q` to quit.
 
-## Key Bindings
+## Key bindings
 
 ### Common
 
@@ -134,7 +210,7 @@ Common workflow:
 | `?` | Show full keyboard reference |
 | `:` | Open command palette |
 
-### Container List
+### Container list
 
 | Key | Action |
 | --- | --- |
@@ -164,19 +240,13 @@ Common workflow:
 | `r` | Force refresh |
 | `t` | Open theme picker |
 
-### Detail View
+### Detail view
 
 | Key | Action |
 | --- | --- |
 | `tab` / `right` | Next tab |
 | `shift+tab` / `left` | Previous tab |
-| `1` | Info tab |
-| `2` | Resources tab |
-| `3` | Environment tab |
-| `4` | Logs tab |
-| `5` | Terminal tab |
-| `6` | Diff tab |
-| `7` | Processes tab |
+| `1`–`7` | Jump to Info / Resources / Environment / Logs / Terminal / Diff / Processes |
 | `f` | Fetch filesystem changes (Diff tab) |
 | `p` | Fetch process list (Processes tab) |
 | `j` / `k`, arrows | Scroll content |
@@ -186,16 +256,12 @@ Common workflow:
 | `E` | Export log buffer to file (Logs tab) |
 | `x` | Reconnect embedded shell (Terminal tab) |
 | `ctrl+\` | Detach embedded shell |
-| `s` | Start or stop container |
-| `R` | Restart container |
-| `P` | Pause or unpause container |
-| `K` | Kill container |
+| `s` / `R` / `P` / `K` | Start-stop / restart / pause / kill container |
 | `d` | Remove container after confirmation |
 | `e` | Open external `docker exec -it` shell |
-| `t` | Open theme picker |
 | `esc` | Return to the container list |
 
-### Centralized Logs
+### Centralized logs
 
 | Key | Action |
 | --- | --- |
@@ -218,7 +284,6 @@ Common workflow:
 | `P` | Prune dangling images after confirmation |
 | `d` | Remove selected image |
 | `r` | Refresh image list |
-| `t` | Open theme picker |
 | `esc` / `q` | Return to the container list |
 
 ### Volumes
@@ -226,8 +291,6 @@ Common workflow:
 | Key | Action |
 | --- | --- |
 | `j` / `k`, arrows | Move selection |
-| `g` / `home` | Jump to first volume |
-| `G` / `end` | Jump to last volume |
 | `space` | Toggle volume selection |
 | `a` | Select or deselect all volumes |
 | `d` | Remove selected volume(s) after confirmation |
@@ -235,7 +298,6 @@ Common workflow:
 | `/` | Filter by name or driver |
 | `ctrl+u` | Clear filter |
 | `r` | Refresh volume list |
-| `t` | Open theme picker |
 | `esc` / `q` | Return to the container list |
 
 ### Networks
@@ -243,36 +305,26 @@ Common workflow:
 | Key | Action |
 | --- | --- |
 | `j` / `k`, arrows | Move selection |
-| `g` / `home` | Jump to first network |
-| `G` / `end` | Jump to last network |
 | `space` | Toggle network selection |
 | `a` | Select or deselect all networks |
 | `d` | Remove selected network(s) after confirmation |
 | `/` | Filter by name |
 | `ctrl+u` | Clear filter |
 | `r` | Refresh network list |
-| `t` | Open theme picker |
 | `esc` / `q` | Return to the container list |
 
-### Notification Center
+### Notification center
 
 | Key | Action |
 | --- | --- |
 | `j` / `k`, arrows | Navigate notifications |
-| `g` / `home` | Jump to oldest |
-| `G` / `end` | Jump to newest |
+| `g` / `G` | Jump to oldest / newest |
 | `c` | Clear all notifications |
 | `esc` / `q` | Return to the container list |
 
 ## Configuration
 
-Config file:
-
-```text
-~/.config/docker-tui/config.json
-```
-
-Example:
+Config file: `~/.config/docker-tui/config.json`
 
 ```json
 {
@@ -295,15 +347,9 @@ Example:
 | `alert_mem` | `80.0` | Memory alert threshold as a percentage |
 | `container_colors` | `{}` | Stable color overrides by exact container ID, exact name, or ID prefix |
 
-Runtime history cache:
-
-```text
-~/.cache/docker-tui/history.json
-```
+Runtime history cache: `~/.cache/docker-tui/history.json`
 
 ## Themes
-
-Built-in themes:
 
 ```text
 dark-green, dracula, nord, gruvbox, tokyo-night,
@@ -326,30 +372,27 @@ Project layout:
 
 ```text
 config/    Theme definitions and JSON config persistence
-docker/    Docker SDK wrapper, images, volumes, networks, events, logs, stats, and host metrics
-ui/        Bubble Tea model, commands, views, themes, dialogs, and helpers
+docker/    Docker SDK wrapper: containers, images, volumes, networks, events, logs, stats, host metrics
+ui/        Bubble Tea model, commands, views, rendering core, themes, dialogs, and helpers
+scripts/   Cross-platform install scripts
 ```
 
 The CI pipeline runs `go vet`, race-enabled tests, cross-platform builds, and golangci-lint.
 
 ## Contributing
 
-Contributions are welcome. Keep pull requests focused, include tests for new behavior, and run the local checks before submitting.
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup and project structure.
+Contributions are welcome. Keep pull requests focused, include tests for new behavior, and
+run the local checks before submitting. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
 
-Please do not open public issues for vulnerabilities. Follow [SECURITY.md](SECURITY.md) for responsible disclosure.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for notable changes.
-
-## Code of Conduct
-
-This project follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Please do not open public issues for vulnerabilities. Follow [SECURITY.md](SECURITY.md) for
+responsible disclosure.
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE). Built with
+[Bubble Tea](https://github.com/charmbracelet/bubbletea) and
+[Lip Gloss](https://github.com/charmbracelet/lipgloss).
+
+<sub>Not affiliated with Docker, Inc.</sub>

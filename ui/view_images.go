@@ -54,8 +54,8 @@ func (m Model) viewImages() string {
 		tableHeaderStyle.Width(dateW).Render("CREATED")
 	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
 
-	usedLines := 9
-	visibleRows := max(3, m.height-usedLines)
+	frame := m.imagesFrame()
+	visibleRows := frame.BodyRows
 	startIdx := 0
 	if m.imgCursor >= visibleRows {
 		startIdx = m.imgCursor - visibleRows + 1
@@ -64,15 +64,17 @@ func (m Model) viewImages() string {
 
 	for i := startIdx; i < endIdx; i++ {
 		img := m.images[i]
-		row := lipgloss.NewStyle().Width(tagW).Foreground(colorText).Render(truncate(img.DisplayTag(), tagW-1)) + "  " +
-			lipgloss.NewStyle().Width(idW).Foreground(colorDim).Render(truncate(img.ID, idW-1)) + "  " +
-			lipgloss.NewStyle().Width(sizeW).Foreground(colorSubtext).Render(formatBytes(uint64(img.Size))) + "  " +
-			lipgloss.NewStyle().Width(dateW).Foreground(colorMuted).Render(img.Created.Format("2006-01-02 15:04"))
-		if i == m.imgCursor {
-			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(w-4).Render(row) + "\n")
-		} else {
-			b.WriteString("  " + listItemStyle.Width(w-4).Render(row) + "\n")
+		cells := []Cell{
+			{Text: truncate(img.DisplayTag(), tagW), Width: tagW, FG: colorText},
+			{Text: truncate(img.ID, idW), Width: idW, FG: colorDim},
+			{Text: formatBytes(uint64(img.Size)), Width: sizeW, FG: colorSubtext},
+			{Text: img.Created.Format("2006-01-02 15:04"), Width: dateW, FG: colorMuted},
 		}
+		kind := ListRowNormal
+		if i == m.imgCursor {
+			kind = ListRowCursor
+		}
+		b.WriteString(renderRowFromKind(w, kind, i, cells) + "\n")
 	}
 
 	if len(m.images) > visibleRows {
@@ -94,5 +96,5 @@ func (m Model) imagesHelp(w int) string {
 		{"?", "help"},
 		{"esc", "back"},
 	}
-	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
+	return renderHelpBar(w, fmtKeys(keys))
 }

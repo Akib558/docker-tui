@@ -413,7 +413,6 @@ func (m Model) reconnect() tea.Cmd {
 			client.Close()
 			return reconnectMsg{success: false, err: err}
 		}
-		m.client = client
-		return reconnectMsg{success: true}
+		return reconnectMsg{success: true, client: client}
 	})
 }

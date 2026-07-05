@@ -10,6 +10,7 @@ import (
 func (m Model) viewNetworks() string {
 	var b strings.Builder
 	w := m.width
+	nets := m.filteredNetworks()
 
 	b.WriteString(m.renderHeader(w))
 	var title string
@@ -32,6 +33,12 @@ func (m Model) viewNetworks() string {
 		b.WriteString(m.networksHelp(w))
 		return b.String()
 	}
+	if len(nets) == 0 {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
+			Render("  No networks match filter.") + "\n")
+		b.WriteString(m.networksHelp(w))
+		return b.String()
+	}
 
 	nameW := max(w*30/100, 18)
 	driverW := 12
@@ -39,7 +46,7 @@ func (m Model) viewNetworks() string {
 	internalW := 10
 	usedW := nameW + driverW + scopeW + internalW + 10
 	if usedW > w-4 {
-		nameW = max(w-nameW-driverW-scopeW-internalW-14, 12)
+		nameW = max(w-driverW-scopeW-internalW-14, 12)
 	}
 
 	hdr := "  " +
@@ -49,45 +56,47 @@ func (m Model) viewNetworks() string {
 		tableHeaderStyle.Width(internalW).Render("INTERNAL")
 	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
 
-	visibleRows := max(3, m.height-9)
+	frame := m.networksFrame()
+	visibleRows := frame.BodyRows
 	startIdx := 0
 	if m.netCursor >= visibleRows {
 		startIdx = m.netCursor - visibleRows + 1
 	}
-	endIdx := min(startIdx+visibleRows, len(m.networks))
+	endIdx := min(startIdx+visibleRows, len(nets))
 
 	for i := startIdx; i < endIdx; i++ {
-		net := m.networks[i]
-		internalStr := ""
+		net := nets[i]
+		internalStr := "no"
+		internalFG := colorMuted
 		if net.Internal {
-			internalStr = lipgloss.NewStyle().Foreground(colorSuccess).Render("yes")
-		} else {
-			internalStr = lipgloss.NewStyle().Foreground(colorMuted).Render("no")
+			internalStr = "yes"
+			internalFG = colorSuccess
 		}
-		row := lipgloss.NewStyle().Width(nameW).Foreground(colorText).Render(truncate(net.Name, nameW-1)) + "  " +
-			lipgloss.NewStyle().Width(driverW).Foreground(colorDim).Render(truncate(net.Driver, driverW-1)) + "  " +
-			lipgloss.NewStyle().Width(scopeW).Foreground(colorSubtext).Render(net.Scope) + "  " +
-			lipgloss.NewStyle().Width(internalW).Render(internalStr)
+		cells := []Cell{
+			{Text: truncate(net.Name, nameW), Width: nameW, FG: colorText},
+			{Text: truncate(net.Driver, driverW), Width: driverW, FG: colorDim},
+			{Text: net.Scope, Width: scopeW, FG: colorSubtext},
+			{Text: internalStr, Width: internalW, FG: internalFG},
+		}
 		isSelected := m.selected[net.ID]
-		rowW := w - 4
+		var kind ListRowKind
 		switch {
 		case i == m.netCursor && isSelected:
-			mark := selectedMarkStyle.Render("◉ ")
-			b.WriteString(mark + listItemSelStyle.Width(rowW).Render(row) + "\n")
+			kind = ListRowCursorSelected
 		case i == m.netCursor:
-			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(rowW).Render(row) + "\n")
+			kind = ListRowCursor
 		case isSelected:
-			mark := selectedMarkStyle.Render("◈ ")
-			b.WriteString(mark + listItemStyle.Background(colorBgSelected).Width(rowW).Render(row) + "\n")
+			kind = ListRowSelected
 		default:
-			b.WriteString("  " + listItemStyle.Width(rowW).Render(row) + "\n")
+			kind = ListRowNormal
 		}
+		b.WriteString(renderRowFromKind(w, kind, i, cells) + "\n")
 	}
 
-	if len(m.networks) > visibleRows {
-		pct := float64(m.netCursor) / float64(max(len(m.networks)-1, 1)) * 100
+	if len(nets) > visibleRows {
+		pct := float64(m.netCursor) / float64(max(len(nets)-1, 1)) * 100
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).
-			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.netCursor+1, len(m.networks), pct)) + "\n")
+			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.netCursor+1, len(nets), pct)) + "\n")
 	}
 
 	b.WriteString("\n" + m.networksHelp(w))
@@ -95,6 +104,14 @@ func (m Model) viewNetworks() string {
 }
 
 func (m Model) networksHelp(w int) string {
+	if m.netFiltering {
+		return renderHelpBar(w, fmtKeys([]struct{ key, desc string }{
+			{"type", "search"},
+			{"backspace", "delete"},
+			{"enter/esc", "done"},
+			{"ctrl+u", "clear"},
+		}))
+	}
 	keys := []struct{ key, desc string }{
 		{"j/k", "nav"},
 		{"space", "select"},
@@ -103,5 +120,5 @@ func (m Model) networksHelp(w int) string {
 		{"?", "help"},
 		{"esc", "back"},
 	}
-	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
+	return renderHelpBar(w, fmtKeys(keys))
 }

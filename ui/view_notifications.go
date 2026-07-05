@@ -27,7 +27,8 @@ func (m Model) viewNotifications() string {
 		return b.String()
 	}
 
-	visibleRows := max(3, m.height-9)
+	frame := m.notificationsFrame()
+	visibleRows := frame.BodyRows
 	startIdx := 0
 	if m.notifyCursor >= visibleRows {
 		startIdx = m.notifyCursor - visibleRows + 1
@@ -36,25 +37,24 @@ func (m Model) viewNotifications() string {
 
 	for i := startIdx; i < endIdx; i++ {
 		notif := m.notifyHistory[i]
-		var icon string
-		var style lipgloss.Style
+		icon := "✓"
+		fg := colorSuccess
 		if notif.IsError {
 			icon = "✗"
-			style = lipgloss.NewStyle().Foreground(colorDanger)
-		} else {
-			icon = "✓"
-			style = lipgloss.NewStyle().Foreground(colorSuccess)
+			fg = colorDanger
 		}
-
 		timeStr := notif.Timestamp.Format("15:04:05")
 		msg := truncate(notif.Message, max(w-30, 20))
-		line := fmt.Sprintf("%s  %s  %s", timeStr, icon, msg)
-
-		if i == m.notifyCursor {
-			b.WriteString(cursorStyle.Render("▸ ") + listItemSelStyle.Width(w-4).Render(line) + "\n")
-		} else {
-			b.WriteString("  " + style.Render(line) + "\n")
+		cells := []Cell{
+			{Text: timeStr, Width: 8, FG: colorMuted},
+			{Text: icon, Width: 1, FG: fg},
+			{Text: msg, Width: max(w-14, 20), FG: fg},
 		}
+		kind := ListRowNormal
+		if i == m.notifyCursor {
+			kind = ListRowCursor
+		}
+		b.WriteString(renderRowFromKind(w, kind, i, cells) + "\n")
 	}
 
 	if len(m.notifyHistory) > visibleRows {
@@ -73,5 +73,5 @@ func (m Model) notificationsHelp(w int) string {
 		{"c", "clear all"},
 		{"esc", "back"},
 	}
-	return helpBarStyle.Width(w).Render(lipgloss.PlaceHorizontal(w-2, lipgloss.Center, fmtKeys(keys)))
+	return renderHelpBar(w, fmtKeys(keys))
 }

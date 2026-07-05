@@ -28,16 +28,7 @@ func (m Model) viewDetail() string {
 	contentWidth := max(boxWidth-6, 24)
 
 	b.WriteString(m.renderHeader(w))
-
-	icon := stateIcon(c.State)
-	stStyle := stateStyle(c.State)
-	nameStr := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(c.Name)
-	stateStr := stStyle.Render(icon + " " + c.State)
-	idStr := lipgloss.NewStyle().Foreground(colorDim).Render(truncate(c.ID, 16))
-	imgStr := lipgloss.NewStyle().Foreground(colorSubtext).Render(truncate(c.Image, max(w/3, 20)))
-	dot := lipgloss.NewStyle().Foreground(colorDim).Render("  ·  ")
-	identity := "  " + nameStr + dot + stateStr + dot + imgStr + dot + idStr
-	b.WriteString(identity + "\n\n")
+	b.WriteString(m.renderDetailIdentity(c, w) + "\n\n")
 
 	tabLine := m.renderDetailTabs(boxWidth)
 	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", boxWidth))
@@ -62,18 +53,19 @@ func (m Model) viewDetail() string {
 	}
 
 	lines := strings.Split(tabContent, "\n")
-	boxChrome := 15
-	availHeight := m.height - boxChrome
-	if availHeight < 5 {
-		availHeight = 5
-	}
+	availHeight := m.detailBoxInnerHeight()
 	maxScroll := max(0, len(lines)-availHeight)
 	scrollPos := m.detailScroll
 	followMode := m.terminalFollow
-	if m.detailTab == tabTerminal {
+	switch m.detailTab {
+	case tabLogs:
+		scrollPos = 0 // log viewer handles its own scroll window
+	case tabTerminal:
 		scrollPos, followMode = normalizeTerminalScroll(m.detailScroll, maxScroll, m.terminalFollow)
-	} else if scrollPos > maxScroll {
-		scrollPos = maxScroll
+	default:
+		if scrollPos > maxScroll {
+			scrollPos = maxScroll
+		}
 	}
 	if scrollPos < 0 {
 		scrollPos = 0
@@ -82,7 +74,7 @@ func (m Model) viewDetail() string {
 	visible := strings.Join(lines[scrollPos:end], "\n")
 
 	box := detailBoxStyle.Width(boxWidth).Render(visible)
-	if len(lines) > availHeight {
+	if len(lines) > availHeight && m.detailTab != tabLogs {
 		scrollLabel := fmt.Sprintf(" (%d/%d)", scrollPos+1, maxScroll+1)
 		if m.detailTab == tabTerminal {
 			mode := "PAUSED"
@@ -105,14 +97,13 @@ func (m Model) renderDetailTabs(width int) string {
 	parts := make([]string, 0, len(tabNames))
 	for i, t := range tabNames {
 		num := lipgloss.NewStyle().Foreground(colorDim).Render(fmt.Sprintf("%d:", i+1))
-		label := num + " " + t
 		if i == m.detailTab {
-			parts = append(parts, activeTabStyle.Render(label))
+			parts = append(parts, activeTabStyle.Render(t))
 		} else {
-			parts = append(parts, inactiveTabStyle.Render(label))
+			parts = append(parts, num+" "+inactiveTabStyle.Render(t))
 		}
 	}
-	row := lipgloss.JoinHorizontal(lipgloss.Bottom, interleave(parts, "  ")...)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, interleave(parts, "  ")...)
 	return lipgloss.NewStyle().Width(width).Render(row)
 }
 
@@ -284,13 +275,11 @@ func (m Model) renderResourcesTwoCol(s *docker.ContainerResourceStats, cpuH, mem
 
 	left.WriteString(sectionHeaderStyle.Width(halfW).Render("  CPU Usage") + "\n")
 	left.WriteString("  " + sparklineColored(cpuH, sparkW, 100, colorPrimary) + "\n")
-	left.WriteString("  " + progressBar(s.CPUPercent, barW, colorPrimary, colorDim) +
-		lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(fmt.Sprintf(" %.1f%%", s.CPUPercent)) + "\n")
+	left.WriteString("  " + renderBarSegments(s.CPUPercent, barW+5, "") + "\n")
 
 	right.WriteString(sectionHeaderStyle.Width(halfW).Render("  Memory Usage") + "\n")
 	right.WriteString("  " + sparklineColored(memH, sparkW, 100, colorCyan) + "\n")
-	right.WriteString("  " + progressBar(s.MemPercent, barW, colorCyan, colorDim) +
-		lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(fmt.Sprintf(" %.1f%%", s.MemPercent)) + "\n")
+	right.WriteString("  " + renderBarSegments(s.MemPercent, barW+5, "") + "\n")
 	right.WriteString("  " + lipgloss.NewStyle().Foreground(colorSubtext).
 		Render(fmt.Sprintf("%s / %s", formatBytes(s.MemUsage), formatBytes(s.MemLimit))) + "\n")
 
@@ -310,13 +299,11 @@ func (m Model) renderResourcesSingleCol(s *docker.ContainerResourceStats, cpuH, 
 
 	b.WriteString(sectionHeaderStyle.Width(width).Render("  CPU Usage") + "\n")
 	b.WriteString("  " + sparklineColored(cpuH, sparkW, 100, colorPrimary) + "\n")
-	b.WriteString("  " + progressBar(s.CPUPercent, barW, colorPrimary, colorDim) +
-		lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(fmt.Sprintf(" %.1f%%", s.CPUPercent)) + "\n\n")
+	b.WriteString("  " + renderBarSegments(s.CPUPercent, barW+5, "") + "\n\n")
 
 	b.WriteString(sectionHeaderStyle.Width(width).Render("  Memory Usage") + "\n")
 	b.WriteString("  " + sparklineColored(memH, sparkW, 100, colorCyan) + "\n")
-	b.WriteString("  " + progressBar(s.MemPercent, barW, colorCyan, colorDim) +
-		lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(fmt.Sprintf(" %.1f%%", s.MemPercent)) + "\n")
+	b.WriteString("  " + renderBarSegments(s.MemPercent, barW+5, "") + "\n")
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSubtext).
 		Render(fmt.Sprintf("%s / %s", formatBytes(s.MemUsage), formatBytes(s.MemLimit))) + "\n")
 	b.WriteString("\n" + m.renderIOStats(s, width))
@@ -407,13 +394,17 @@ func (m Model) renderLogsTab(width int) string {
 		mode = "PAUSED"
 	}
 	b.WriteString(sectionHeaderStyle.Width(width).Render("  Container Logs "+mode+liveIndicator) + "\n")
+	if m.logViewer.ShowLegend {
+		b.WriteString(renderLogLegend(width) + "\n")
+	}
 	rows := m.logViewer.VisibleEntries(m.detailLogContentRows())
 	if len(rows) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render("  No logs available.") + "\n")
 		return b.String()
 	}
-	for _, entry := range rows {
-		b.WriteString(renderLogMessage(entry, width, false, m.logViewer.Targets, m.cfg) + "\n")
+	start, _, _ := m.logViewer.VisibleWindow(m.detailLogContentRows())
+	for i, entry := range rows {
+		b.WriteString(m.renderLogEntryRow(entry, width, false, start+i, i) + "\n")
 	}
 	return b.String()
 }
@@ -437,7 +428,18 @@ func (m Model) renderTerminalTab(c *docker.ContainerInfo, width int) string {
 		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSubtext).Render("shell: "+m.terminalShell) + "\n")
 	}
 	b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
-		Render("Ctrl+\\ detach | Enter send | x reconnect") + "\n\n")
+		Render("Ctrl+\\ detach · type to send input · Esc release focus") + "\n")
+	if m.terminalInputFocused {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).
+			Render("INPUT FOCUSED · Esc to release") + "\n")
+	} else if m.terminalActive {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
+			Render("start typing or press i/Enter to focus input") + "\n")
+	} else {
+		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
+			Render("press x to connect") + "\n")
+	}
+	b.WriteString("\n")
 
 	out := sanitizeOutputText(m.terminalOutput)
 	if out == "" {
@@ -548,4 +550,18 @@ func (m Model) renderProcessesTab(c *docker.ContainerInfo, width int) string {
 	}
 	b.WriteString("\n  " + lipgloss.NewStyle().Foreground(colorMuted).Render("Press 'p' to refresh process list."))
 	return b.String()
+}
+
+func (m Model) renderDetailIdentity(c *docker.ContainerInfo, w int) string {
+	dot := lipgloss.NewStyle().Foreground(colorDim).Render("  ·  ")
+	stateStr := StateBadgeStyled(c.State)
+	reserve := 2 + lipgloss.Width(stateStr) + lipgloss.Width(dot)*3 + 16
+	remain := max(w-reserve, 20)
+	nameW := max(remain*55/100, 8)
+	imgW := max(remain-nameW, 8)
+
+	nameStr := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(truncateDisplay(c.Name, nameW))
+	imgStr := lipgloss.NewStyle().Foreground(colorSubtext).Render(truncateDisplay(c.Image, imgW))
+	idStr := lipgloss.NewStyle().Foreground(colorDim).Render(truncateDisplay(c.ID, 16))
+	return "  " + nameStr + dot + stateStr + dot + imgStr + dot + idStr
 }

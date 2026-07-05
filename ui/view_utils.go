@@ -8,6 +8,7 @@ import (
 
 	"github.com/akib558/docker-tui/docker"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // ── KV rendering ─────────────────────────────────────────────────────────
@@ -74,13 +75,13 @@ func truncate(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
-	if len(s) <= maxLen {
+	if runewidth.StringWidth(s) <= maxLen {
 		return s
 	}
-	if maxLen <= 3 {
-		return s[:maxLen]
+	if maxLen <= 1 {
+		return runewidth.Truncate(s, maxLen, "")
 	}
-	return s[:maxLen-3] + "..."
+	return runewidth.Truncate(s, maxLen-1, "…")
 }
 
 // ── Ports ────────────────────────────────────────────────────────────────
@@ -104,17 +105,6 @@ func formatPortsSummary(ports []docker.PortBinding) string {
 		}
 	}
 	return strings.Join(parts, ",")
-}
-
-// ── Log cleaning ──────────────────────────────────────────────────────────
-
-func cleanDockerLogs(s string) string {
-	var cleaned strings.Builder
-	for _, line := range strings.Split(s, "\n") {
-		line = docker.StripDockerLogHeaderForUI(line)
-		cleaned.WriteString(line + "\n")
-	}
-	return strings.TrimRight(sanitizeOutputText(cleaned.String()), "\n")
 }
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\a]*(\a|\x1b\\)|\x1b[@-_]`)

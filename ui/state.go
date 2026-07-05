@@ -55,7 +55,7 @@ const terminalBufferMax = 96 * 1024
 
 type Model struct {
 	// Docker
-	client            *docker.Client
+	client            docker.ClientAPI
 	containers        []docker.ContainerInfo
 	inspected         *docker.ContainerInfo
 	images            []docker.ImageInfo
@@ -79,29 +79,37 @@ type Model struct {
 	overview   *docker.DockerOverview
 
 	// Navigation
-	view      viewState
-	cursor    int
-	imgCursor int
-	width     int
-	height    int
+	view         viewState
+	cursor       int
+	imgCursor    int
+	eventsCursor int
+	width        int
+	height       int
+
+	// Caches (Phase 3)
+	filteredCache    []docker.ContainerInfo
+	filteredCacheKey filteredCacheKey
+	dashboardCache   string
+	dashboardCacheW  int
+	containerNames   map[string]string
 
 	// Detail
-	detailScroll   int
-	detailTab      int
-	logViewer      LogViewerState
-	logCancel      func()
-	liveLogging    bool
-	diff           []docker.DiffEntry
-	processTop     docker.ContainerTop
-	processLoaded  bool
-	terminalInput  string
-	terminalOutput string
-	terminalFollow bool
-	terminalCancel func()
-	terminalWriter io.Writer
-	terminalActive bool
-	terminalShell  string
-	logRegex       bool
+	detailScroll         int
+	detailTab            int
+	logViewer            LogViewerState
+	logCancel            func()
+	liveLogging          bool
+	diff                 []docker.DiffEntry
+	processTop           docker.ContainerTop
+	processLoaded        bool
+	terminalInput        string
+	terminalOutput       string
+	terminalFollow       bool
+	terminalCancel       func()
+	terminalWriter       io.Writer
+	terminalActive       bool
+	terminalShell        string
+	terminalInputFocused bool
 
 	// Centralized logs
 	centralLogs         LogViewerState
@@ -110,21 +118,24 @@ type Model struct {
 	centralLogFiltering bool
 	centralLogFilter    string
 	centralLogRegex     bool
-	centralLogClipboard bool
-	centralLogCursor    int
 
 	// Events streaming
 	eventsCancel func()
 
 	// Filter
-	filtering  bool
-	filterText string
+	filtering     bool
+	filterText    string
+	volFiltering  bool
+	volFilterText string
+	netFiltering  bool
+	netFilterText string
 
 	// Multi-select
 	selected map[string]bool
 
 	// Dialog
 	dialog      dialogMode
+	helpScroll  int
 	confirmMsg  string
 	confirmOK   tea.Cmd
 	inputText   string
@@ -162,10 +173,16 @@ type Model struct {
 	reconnectAttempts int
 }
 
+type filteredCacheKey struct {
+	filter   string
+	sortMode int
+	n        int
+}
+
 type Command struct {
 	Name        string
 	Description string
-	Action      func() tea.Cmd
+	Run         func(Model) (Model, tea.Cmd)
 }
 
 type Notification struct {
@@ -282,10 +299,11 @@ type terminalDoneMsg struct {
 type reconnectMsg struct {
 	success bool
 	err     error
+	client  docker.ClientAPI
 }
 
 type initMsg struct {
-	client     *docker.Client
+	client     docker.ClientAPI
 	containers []docker.ContainerInfo
 	overview   *docker.DockerOverview
 	sysMem     docker.SystemMemory
@@ -304,7 +322,7 @@ func NewModel(cfg *config.Config) Model {
 		alertShown:      make(map[string]bool),
 		selected:        make(map[string]bool),
 		cfg:             cfg,
-		refreshInterval: time.Duration(cfg.RefreshSeconds) * time.Second,
+		refreshInterval: cfg.RefreshDuration(),
 		startTime:       time.Now(),
 		themeCursor:     config.ThemeIndex(cfg.Theme),
 	}

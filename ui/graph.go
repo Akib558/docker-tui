@@ -47,70 +47,11 @@ func sparkline(data []float64, width int, maxVal float64) string {
 	return b.String()
 }
 
-func progressBar(percent float64, width int, fillColor, emptyColor lipgloss.Color) string {
-	if width <= 0 {
-		return ""
-	}
-	if percent > 100 {
-		percent = 100
-	}
-	if percent < 0 {
-		percent = 0
-	}
-	filled := int(math.Round(percent / 100 * float64(width)))
-	empty := width - filled
-	return lipgloss.NewStyle().Foreground(fillColor).Render(strings.Repeat("━", filled)) +
-		lipgloss.NewStyle().Foreground(emptyColor).Render(strings.Repeat("─", empty))
-}
-
-func miniBar(percent float64, width int) string {
+func hostMemBar(percent float64, width int) string {
 	if width <= 5 {
 		return fmt.Sprintf("%3.0f%%", percent)
 	}
-	barWidth := width - 5
-	if barWidth < 2 {
-		barWidth = 2
-	}
-	barPct := percent
-	if barPct > 100 {
-		barPct = 100
-	}
-	filled := int(math.Round(barPct / 100 * float64(barWidth)))
-	empty := barWidth - filled
-
-	var fillColor lipgloss.Color
-	switch {
-	case percent >= 80:
-		fillColor = colorDanger
-	case percent >= 50:
-		fillColor = colorWarning
-	default:
-		fillColor = colorPrimary
-	}
-	bar := lipgloss.NewStyle().Foreground(fillColor).Render(strings.Repeat("█", filled)) +
-		lipgloss.NewStyle().Foreground(colorDim).Render(strings.Repeat("░", empty))
-	return bar + " " + lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%3.0f%%", percent))
-}
-
-func hostMemBar(percent float64, width int) string {
-	if width <= 4 {
-		return fmt.Sprintf("%.0f%%", percent)
-	}
-	barW := width - 5
-	if barW < 4 {
-		barW = 4
-	}
-	var fillColor lipgloss.Color
-	switch {
-	case percent >= 85:
-		fillColor = colorDanger
-	case percent >= 60:
-		fillColor = colorWarning
-	default:
-		fillColor = colorPrimary
-	}
-	return progressBar(percent, barW, fillColor, colorDim) + " " +
-		lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%.0f%%", percent))
+	return renderBarSegments(percent, width, "")
 }
 
 func sparklineColored(data []float64, width int, maxVal float64, color lipgloss.Color) string {

@@ -39,14 +39,27 @@ func (m Model) loadHistory() tea.Cmd {
 }
 
 func (m Model) saveHistory() tea.Cmd {
-	cpu := m.cpuHistory
-	mem := m.memHistory
+	cpu := copyHistMap(m.cpuHistory)
+	mem := copyHistMap(m.memHistory)
 	return func() tea.Msg {
 		path := histPath()
 		_ = os.MkdirAll(filepath.Dir(path), 0755)
 		h := histData{CPU: cpu, Mem: mem}
-		data, _ := json.MarshalIndent(h, "", "")
+		data, _ := json.Marshal(h)
 		_ = os.WriteFile(path, data, 0644)
 		return nil
 	}
+}
+
+func copyHistMap(src map[string][]float64) map[string][]float64 {
+	if len(src) == 0 {
+		return make(map[string][]float64)
+	}
+	dst := make(map[string][]float64, len(src))
+	for k, v := range src {
+		cp := make([]float64, len(v))
+		copy(cp, v)
+		dst[k] = cp
+	}
+	return dst
 }

@@ -40,6 +40,12 @@ type ClientAPI interface {
 	// Networks
 	ListNetworks() ([]NetworkResource, error)
 	RemoveNetwork(id string) error
+
+	// Volumes
+	ListVolumes() ([]VolumeInfo, error)
+	RemoveVolume(name string) error
+	PruneVolumes() ([]string, error)
+
 	SystemPrune() (SystemPruneResult, error)
 
 	// Events

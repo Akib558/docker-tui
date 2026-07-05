@@ -1,3 +1,4 @@
+// Package config loads user preferences and theme definitions for docker-tui.
 package config
 
 import (
@@ -126,16 +127,19 @@ type LogHighlightPattern struct {
 
 type Config struct {
 	Theme                string                `json:"theme"`
-	RefreshSeconds       int                   `json:"refresh_seconds"`
+	RefreshMS            int                   `json:"refresh_ms"`
+	RefreshSeconds       int                   `json:"refresh_seconds"` // legacy; kept in sync with RefreshMS
 	AlertCPU             float64               `json:"alert_cpu"`
 	AlertMem             float64               `json:"alert_mem"`
 	ContainerColors      map[string]string     `json:"container_colors"`
 	LogHighlightPatterns []LogHighlightPattern `json:"log_highlight_patterns"`
+	HintDismissed        bool                  `json:"hint_dismissed"`
 }
 
 var Default = Config{
 	Theme:           "dark-green",
-	RefreshSeconds:  3,
+	RefreshMS:       2000,
+	RefreshSeconds:  2,
 	AlertCPU:        80.0,
 	AlertMem:        80.0,
 	ContainerColors: map[string]string{},
@@ -177,8 +181,15 @@ func Load() *Config {
 		return &cfg
 	}
 	_ = json.Unmarshal(data, &cfg)
+	var raw map[string]json.RawMessage
+	_ = json.Unmarshal(data, &raw)
+	if _, hasMS := raw["refresh_ms"]; !hasMS && cfg.RefreshSeconds > 0 {
+		cfg.RefreshMS = cfg.RefreshSeconds * 1000
+	} else if cfg.RefreshMS <= 0 {
+		cfg.RefreshMS = Default.RefreshMS
+	}
 	if cfg.RefreshSeconds < 1 {
-		cfg.RefreshSeconds = 1
+		cfg.RefreshSeconds = max(1, cfg.RefreshMS/1000)
 	}
 	if cfg.ContainerColors == nil {
 		cfg.ContainerColors = map[string]string{}
