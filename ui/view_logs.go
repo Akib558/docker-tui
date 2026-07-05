@@ -46,18 +46,6 @@ func renderLogLegend(width int) string {
 	return truncateDisplay(line, width)
 }
 
-func renderLogMessage(entry LogEntry, width int, showTag bool, targets map[string]LogTarget, cfg *config.Config) string {
-	cells := buildLogCells(entry, width, showTag, targets, cfg)
-	if len(cells) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, cell := range cells {
-		parts = append(parts, cellStyle(cell, "").Render(prepareCellText(cell.Text, cell.Width)))
-	}
-	return strings.Join(parts, "")
-}
-
 func buildLogCells(entry LogEntry, bodyW int, showTag bool, targets map[string]LogTarget, cfg *config.Config) []Cell {
 	if bodyW < 20 {
 		bodyW = 20

@@ -7,10 +7,6 @@ import (
 	"github.com/akib558/docker-tui/docker"
 )
 
-func (m *Model) invalidateFilteredCache() {
-	m.filteredCache = nil
-}
-
 func (m *Model) rebuildFilteredCache() {
 	m.filteredCache = m.computeFilteredContainers()
 	m.filteredCacheKey = filteredCacheKey{
@@ -90,15 +86,6 @@ func (m *Model) computeFilteredContainers() []docker.ContainerInfo {
 func (m *Model) invalidateDashboardCache() {
 	m.dashboardCache = ""
 	m.dashboardCacheW = 0
-}
-
-func (m *Model) cachedDashboard(w int) string {
-	if m.dashboardCache != "" && m.dashboardCacheW == w {
-		return m.dashboardCache
-	}
-	m.dashboardCache = m.renderDashboard(w)
-	m.dashboardCacheW = w
-	return m.dashboardCache
 }
 
 func (m *Model) pruneHistoryKeys() {
