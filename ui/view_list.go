@@ -90,8 +90,31 @@ func (m Model) viewList() string {
 
 // ── Header bar ──────────────────────────────────────────────────────────
 
+// appVersion is the docker-tui build version, set from main via SetVersion.
+var appVersion = "dev"
+
+// SetVersion records the application version for display in the header.
+func SetVersion(v string) {
+	if v != "" {
+		appVersion = v
+	}
+}
+
+// headerVersion returns the app version formatted for display (e.g. "v0.1.0").
+func headerVersion() string {
+	v := appVersion
+	if v == "" {
+		v = "dev"
+	}
+	if v != "dev" && !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	return v
+}
+
 func (m Model) renderHeader(w int) string {
 	logo := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(glyphLogo + " DOCKER TUI")
+	logo += lipgloss.NewStyle().Foreground(colorSubtext).Render(" " + headerVersion())
 
 	var center string
 	if m.reconnecting {
@@ -107,7 +130,7 @@ func (m Model) renderHeader(w int) string {
 	} else if m.overview != nil {
 		dot := lipgloss.NewStyle().Foreground(colorDim).Render(" · ")
 		parts := []string{
-			lipgloss.NewStyle().Foreground(colorSubtext).Render("v" + m.overview.ServerVersion),
+			lipgloss.NewStyle().Foreground(colorSubtext).Render("docker " + m.overview.ServerVersion),
 			lipgloss.NewStyle().Foreground(colorSubtext).Render(fmt.Sprintf("%d images", m.overview.Images)),
 		}
 		if m.sortMode != sortName {
