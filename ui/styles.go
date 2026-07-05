@@ -28,54 +28,35 @@ var (
 // ── Style vars (rebuilt by rebuildStyles) ────────────────────────────────
 
 var (
-	titleStyle           lipgloss.Style
-	listHeaderStyle      lipgloss.Style
-	listItemStyle        lipgloss.Style
-	listItemSelStyle     lipgloss.Style
-	listRowCursorStyle   lipgloss.Style
-	listRowSelectedStyle lipgloss.Style
-	listRowAltStyle      lipgloss.Style
-	statusRunning        lipgloss.Style
-	statusStopped        lipgloss.Style
-	statusOther          lipgloss.Style
-	detailBoxStyle       lipgloss.Style
-	detailLabelStyle     lipgloss.Style
-	detailValueStyle     lipgloss.Style
-	sectionHeaderStyle   lipgloss.Style
-	activeTabStyle       lipgloss.Style
-	inactiveTabStyle     lipgloss.Style
-	helpBarStyle         lipgloss.Style
-	helpKeyStyle         lipgloss.Style
-	helpDescStyle        lipgloss.Style
-	notifySuccessStyle   lipgloss.Style
-	notifyErrorStyle     lipgloss.Style
-	tableHeaderStyle     lipgloss.Style
-	cursorStyle          lipgloss.Style
-	statCardBorder       lipgloss.Style
-	statCardLabel        lipgloss.Style
-	statCardValue        lipgloss.Style
-	dialogStyle          lipgloss.Style
-	dialogTitleStyle     lipgloss.Style
-	inputStyle           lipgloss.Style
-	statusBarStyle       lipgloss.Style
-	alertStyle           lipgloss.Style
-	filterBarStyle       lipgloss.Style
-	selectedMarkStyle    lipgloss.Style
-	dimOverlayStyle      lipgloss.Style
-	columnHeaderStyle    lipgloss.Style
-	eventTypeContainer   lipgloss.Style
-	eventTypeNetwork     lipgloss.Style
-	eventTypeVolume      lipgloss.Style
-	eventActionStart     lipgloss.Style
-	eventActionStop      lipgloss.Style
-	eventActionOther     lipgloss.Style
+	titleStyle         lipgloss.Style
+	listHeaderStyle    lipgloss.Style
+	statusRunning      lipgloss.Style
+	statusStopped      lipgloss.Style
+	statusOther        lipgloss.Style
+	detailBoxStyle     lipgloss.Style
+	detailLabelStyle   lipgloss.Style
+	detailValueStyle   lipgloss.Style
+	sectionHeaderStyle lipgloss.Style
+	activeTabStyle     lipgloss.Style
+	inactiveTabStyle   lipgloss.Style
+	helpBarStyle       lipgloss.Style
+	helpKeyStyle       lipgloss.Style
+	helpDescStyle      lipgloss.Style
+	notifySuccessStyle lipgloss.Style
+	notifyErrorStyle   lipgloss.Style
+	tableHeaderStyle   lipgloss.Style
+	dialogStyle        lipgloss.Style
+	dialogTitleStyle   lipgloss.Style
+	inputStyle         lipgloss.Style
+	filterBarStyle     lipgloss.Style
+	selectedMarkStyle  lipgloss.Style
 )
 
 func init() {
 	applyTheme(config.FindTheme("dark-green"))
 }
 
-// ApplyTheme updates all color and style variables to the given theme.
+// applyTheme updates all color and style variables to the given theme.
 func applyTheme(t *config.Theme) {
 	colorPrimary = lipgloss.Color(t.Primary)
 	colorSecondary = lipgloss.Color(t.Secondary)
@@ -102,24 +83,6 @@ func rebuildStyles() {
 	listHeaderStyle = lipgloss.NewStyle().
 		Bold(true).Foreground(colorMuted).
 		BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorBorder)
-
-	listItemStyle = lipgloss.NewStyle().Foreground(colorText)
-
-	listItemSelStyle = lipgloss.NewStyle().
-		Foreground(colorText).Background(colorBgSelected).Bold(true)
-
-	listRowCursorStyle = lipgloss.NewStyle().
-		Foreground(colorText).
-		Background(colorBgSelected).
-		Bold(true)
-
-	listRowSelectedStyle = lipgloss.NewStyle().
-		Foreground(colorText).
-		Background(colorBgSelected)
-
-	listRowAltStyle = lipgloss.NewStyle().
-		Foreground(colorText).
-		Background(colorBgAlt)
 
 	statusRunning = lipgloss.NewStyle().Bold(true).Foreground(colorSuccess)
 	statusStopped = lipgloss.NewStyle().Bold(true).Foreground(colorDanger)
@@ -158,14 +121,6 @@ func rebuildStyles() {
 		PaddingLeft(1)
 
 	tableHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorMuted)
-	columnHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorMuted)
-	cursorStyle = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
-
-	statCardBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).
-		Padding(0, 2).Align(lipgloss.Center)
-	statCardLabel = lipgloss.NewStyle().Foreground(colorMuted).Bold(true).Align(lipgloss.Center)
-	statCardValue = lipgloss.NewStyle().Bold(true).Align(lipgloss.Center)
 
 	dialogStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorPrimary).
@@ -178,29 +133,12 @@ func rebuildStyles() {
 		Border(lipgloss.NormalBorder()).BorderForeground(colorPrimary).
 		Foreground(colorText).Padding(0, 1)
 
-	statusBarStyle = lipgloss.NewStyle().
-		Foreground(colorMuted).Background(colorBgAlt).Padding(0, 2)
-
-	alertStyle = lipgloss.NewStyle().Foreground(colorDanger).Bold(true)
-
 	filterBarStyle = lipgloss.NewStyle().
 		Foreground(colorWarning).Bold(true).
 		Background(colorBgAlt).Padding(0, 1).
 		BorderLeft(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorWarning)
 
 	selectedMarkStyle = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
-
-	dimOverlayStyle = lipgloss.NewStyle().Foreground(colorDim)
-
-	// Event type styles
-	eventTypeContainer = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
-	eventTypeNetwork = lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
-	eventTypeVolume = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
-
-	// Event action styles
-	eventActionStart = lipgloss.NewStyle().Foreground(colorSuccess)
-	eventActionStop = lipgloss.NewStyle().Foreground(colorDanger)
-	eventActionOther = lipgloss.NewStyle().Foreground(colorSubtext)
 }
 
 func stateStyle(state string) lipgloss.Style {
