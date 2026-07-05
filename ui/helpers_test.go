@@ -21,19 +21,11 @@ func TestAppendHistBounds(t *testing.T) {
 
 func TestTruncate(t *testing.T) {
 	got := truncate("docker-container-name", 10)
-	if got != "docker-..." {
+	if got != "docker-c…" {
 		t.Fatalf("unexpected truncate result: %q", got)
 	}
 	if truncate("abc", 10) != "abc" {
 		t.Fatalf("short strings should be unchanged")
-	}
-}
-
-func TestCleanDockerLogs(t *testing.T) {
-	raw := string([]byte{1, 0, 0, 0, 0, 0, 0, 5}) + "hello\nplain"
-	got := cleanDockerLogs(raw)
-	if got != "hello\nplain" {
-		t.Fatalf("unexpected cleaned logs: %q", got)
 	}
 }
 

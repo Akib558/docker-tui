@@ -63,6 +63,36 @@ func (m *Model) clampCursorToFiltered() {
 	}
 }
 
+func (m *Model) clampVolCursorToFiltered() {
+	vols := m.filteredVolumes()
+	if len(vols) == 0 {
+		m.volCursor = 0
+		return
+	}
+	if m.volCursor < 0 {
+		m.volCursor = 0
+		return
+	}
+	if m.volCursor >= len(vols) {
+		m.volCursor = len(vols) - 1
+	}
+}
+
+func (m *Model) clampNetCursorToFiltered() {
+	nets := m.filteredNetworks()
+	if len(nets) == 0 {
+		m.netCursor = 0
+		return
+	}
+	if m.netCursor < 0 {
+		m.netCursor = 0
+		return
+	}
+	if m.netCursor >= len(nets) {
+		m.netCursor = len(nets) - 1
+	}
+}
+
 // ── History ──────────────────────────────────────────────────────────────
 
 func appendHist(h []float64, v float64) []float64 {

@@ -6,6 +6,7 @@ linters:
     - govet
     - ineffassign
     - misspell
+    - unused
 
 formatters:
   enable:

@@ -1,9 +1,9 @@
+// Package ui implements the Bubble Tea terminal UI for docker-tui.
 package ui
 
 import (
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +20,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.invalidateDashboardCache()
+		m.onResize()
 		return m, nil
 
 	case tea.MouseMsg:
@@ -47,7 +49,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleContainerStateTransitions(prevContainers, m.containers)
 		m.loading = false
 		m.lastRefresh = time.Now()
+		m.containerNames = make(map[string]string, len(m.containers))
+		for _, c := range m.containers {
+			m.containerNames[c.ID] = c.Name
+		}
+		m.rebuildFilteredCache()
+		m.pruneHistoryKeys()
+		m.invalidateDashboardCache()
 		m.clampCursorToFiltered()
+		if m.width > 0 {
+			m.dashboardCache = m.renderDashboard(m.width)
+			m.dashboardCacheW = m.width
+		}
 		return m, nil
 
 	case imagesMsg:
@@ -75,6 +88,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.memHistory[id] = appendHist(m.memHistory[id], s.MemPercent)
 			m.checkAlerts(id, s)
 		}
+		if m.sortMode == sortCPU || m.sortMode == sortMemory {
+			m.rebuildFilteredCache()
+		}
+		m.invalidateDashboardCache()
 		// save history every ~10 ticks to avoid disk thrash
 		if m.tickCount%10 == 0 {
 			return m, m.saveHistory()
@@ -108,8 +125,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case centralLogTailMsg:
-		m.centralLogs.Append(msg.entries...)
-		SortLogEntries(m.centralLogs.Entries)
+		m.centralLogs.AppendSorted(msg.entries...)
 		return m, nil
 
 	case centralLogStreamStartMsg:
@@ -117,8 +133,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, msg.next
 
 	case centralLogLineMsg:
-		m.centralLogs.Append(msg.entry)
-		SortLogEntries(m.centralLogs.Entries)
+		m.centralLogs.AppendSorted(msg.entry)
 		if m.view == viewLogs {
 			return m, msg.next
 		}
@@ -139,6 +154,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.terminalActive = true
 		m.terminalFollow = true
 		m.terminalShell = msg.shell
+		m.terminalInputFocused = m.detailTab == tabTerminal
 		if m.terminalOutput == "" {
 			m.terminalOutput = fmt.Sprintf("Connected to shell: %s\n", msg.shell)
 		}
@@ -193,6 +209,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case reconnectMsg:
 		if msg.success {
+			if m.client != nil {
+				m.client.Close()
+			}
+			m.client = msg.client
 			m.reconnecting = false
 			m.reconnectAttempts = 0
 			m.err = nil
@@ -240,7 +260,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == viewList || m.view == viewDetail || m.view == viewLogs {
 				cmds = append(cmds, m.refreshContainers())
 			}
-			if !m.fetchStats {
+			if !m.fetchStats && m.needsStats() {
 				m.fetchStats = true
 				cmds = append(cmds, m.collectStats())
 			}
@@ -255,12 +275,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m.quit()
 		case "?":
-			if m.dialog == dialogNone && !m.filtering {
+			if m.dialog == dialogNone && !m.filtering && !m.volFiltering && !m.netFiltering {
+				m.dismissHint()
 				m.dialog = dialogHelp
+				m.helpScroll = 0
 				return m, nil
 			}
 		case ":":
-			if m.dialog == dialogNone && !m.filtering {
+			if m.dialog == dialogNone && !m.filtering && !m.volFiltering && !m.netFiltering {
+				m.dismissHint()
 				m.dialog = dialogCommandPalette
 				m.commandPaletteText = ""
 				m.commandPaletteCursor = 0
@@ -271,8 +294,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.dialog != dialogNone {
 			return m.handleDialog(msg)
 		}
-		if m.filtering {
+		if m.filtering && m.view == viewList {
 			return m.handleFilter(msg)
+		}
+		if m.volFiltering && m.view == viewVolumes {
+			return m.handleVolFilter(msg)
+		}
+		if m.netFiltering && m.view == viewNetworks {
+			return m.handleNetFilter(msg)
 		}
 		switch m.view {
 		case viewList:
@@ -302,10 +331,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		if m.view == viewLogs {
-			m.centralLogs.ScrollBy(-1, m.centralLogViewportHeight())
+			m.centralLogs.MoveFocus(-1, m.centralLogContentRows())
 		} else if m.view == viewDetail {
 			if m.detailTab == tabLogs {
-				m.logViewer.ScrollBy(-1, m.detailLogContentRows())
+				m.logViewer.MoveFocus(-1, m.detailLogContentRows())
 			} else if m.detailTab == tabTerminal {
 				m.terminalFollow = false
 				if m.detailScroll > 0 {
@@ -322,10 +351,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseButtonWheelDown:
 		if m.view == viewLogs {
-			m.centralLogs.ScrollBy(1, m.centralLogViewportHeight())
+			m.centralLogs.MoveFocus(1, m.centralLogContentRows())
 		} else if m.view == viewDetail {
 			if m.detailTab == tabLogs {
-				m.logViewer.ScrollBy(1, m.detailLogContentRows())
+				m.logViewer.MoveFocus(1, m.detailLogContentRows())
 			} else if m.detailTab == tabTerminal {
 				if !m.terminalFollow {
 					m.detailScroll++
@@ -426,6 +455,11 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.netCursor = 0
 		m.loading = true
 		return m, m.fetchNetworks()
+	case "D":
+		m.view = viewEvents
+		m.eventsCursor = 0
+		m.selected = make(map[string]bool)
+		return m, m.startEventStream()
 	case "L":
 		return m.openCentralLogs()
 	case "N":
@@ -439,26 +473,28 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filtering = false
 		m.filterText = ""
 		m.cursor = 0
+		m.rebuildFilteredCache()
 	case "c":
 		m.groupByCompose = !m.groupByCompose
 	case "S":
 		m.sortMode = (m.sortMode + 1) % sortModeCount
+		m.rebuildFilteredCache()
 	case "t":
 		m.dialog = dialogTheme
 	case "+":
-		if m.cfg.RefreshSeconds > 1 {
-			m.cfg.RefreshSeconds--
-		} else {
-			m.cfg.RefreshSeconds = 1
-		}
-		m.refreshInterval = time.Duration(m.cfg.RefreshSeconds) * time.Second
+		m.cfg.StepRefresh(true)
+		m.refreshInterval = m.cfg.RefreshDuration()
+		m.notify("Refresh: "+config.FormatRefreshInterval(m.refreshInterval), false)
 		go config.Save(m.cfg)
+		m.clampCursorToFiltered()
+		return m, tickCmd(m.refreshInterval)
 	case "-":
-		if m.cfg.RefreshSeconds < 30 {
-			m.cfg.RefreshSeconds++
-		}
-		m.refreshInterval = time.Duration(m.cfg.RefreshSeconds) * time.Second
+		m.cfg.StepRefresh(false)
+		m.refreshInterval = m.cfg.RefreshDuration()
+		m.notify("Refresh: "+config.FormatRefreshInterval(m.refreshInterval), false)
 		go config.Save(m.cfg)
+		m.clampCursorToFiltered()
+		return m, tickCmd(m.refreshInterval)
 	}
 	m.clampCursorToFiltered()
 	return m, nil
@@ -495,7 +531,6 @@ func (m Model) openCentralLogs() (tea.Model, tea.Cmd) {
 	m.centralLogFiltering = false
 	m.centralLogFilter = ""
 	m.centralLogRegex = false
-	m.centralLogCursor = 0
 	m.view = viewLogs
 	if len(targets) == 0 {
 		m.centralLogs.Append(LogEntry{
@@ -641,6 +676,24 @@ func (m Model) buildRemoveCmd(targets []docker.ContainerInfo) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+func (m Model) buildDetailRemoveCmd(id, name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.client.RemoveContainer(id, true); err != nil {
+			return errMsg{err}
+		}
+		return actionDoneMsg{"Removed", name}
+	}
+}
+
+func (m Model) buildImageRemoveCmd(id, tag string) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.client.RemoveImage(id, false); err != nil {
+			return errMsg{err}
+		}
+		return imageActionDoneMsg{"Removed image", tag}
+	}
+}
+
 func (m Model) removeTargets() []docker.ContainerInfo {
 	if len(m.selected) > 0 {
 		var out []docker.ContainerInfo
@@ -679,89 +732,95 @@ func (m Model) handleFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterText = ""
 		m.cursor = 0
 	case "backspace":
-		if len(m.filterText) > 0 {
-			m.filterText = m.filterText[:len(m.filterText)-1]
-			m.cursor = 0
-		}
+		backspaceTextInput(&m.filterText)
+		m.cursor = 0
 	default:
-		if len(msg.String()) == 1 {
-			m.filterText += msg.String()
+		if appendTextInput(&m.filterText, msg) {
 			m.cursor = 0
 		}
 	}
+	m.rebuildFilteredCache()
 	m.clampCursorToFiltered()
 	return m, nil
 }
 
-func (m Model) filteredContainers() []docker.ContainerInfo {
-	var result []docker.ContainerInfo
-	if m.filterText == "" {
-		result = make([]docker.ContainerInfo, len(m.containers))
-		copy(result, m.containers)
-	} else {
-		q := strings.ToLower(m.filterText)
-		for _, c := range m.containers {
-			if strings.Contains(strings.ToLower(c.Name), q) ||
-				strings.Contains(strings.ToLower(c.Image), q) ||
-				strings.Contains(strings.ToLower(c.State), q) {
-				result = append(result, c)
-			}
+func (m Model) handleVolFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "enter":
+		m.volFiltering = false
+		if m.volFilterText == "" {
+			m.volCursor = 0
+		}
+	case "ctrl+u":
+		m.volFilterText = ""
+		m.volCursor = 0
+	case "backspace":
+		backspaceTextInput(&m.volFilterText)
+		m.volCursor = 0
+	default:
+		if appendTextInput(&m.volFilterText, msg) {
+			m.volCursor = 0
 		}
 	}
+	m.clampVolCursorToFiltered()
+	return m, nil
+}
 
-	// Apply sorting
-	sort.Slice(result, func(i, j int) bool {
-		switch m.sortMode {
-		case sortName:
-			// Group by state priority (running first), then alphabetical within group
-			pi, pj := statePriority(result[i].State), statePriority(result[j].State)
-			if pi != pj {
-				return pi < pj
-			}
-			return result[i].Name < result[j].Name
-		case sortState:
-			pi, pj := statePriority(result[i].State), statePriority(result[j].State)
-			if pi != pj {
-				return pi < pj
-			}
-			return result[i].Name < result[j].Name
-		case sortCPU:
-			cpuI := m.stats[result[i].ID].CPUPercent
-			cpuJ := m.stats[result[j].ID].CPUPercent
-			if cpuI == cpuJ {
-				return result[i].Name < result[j].Name
-			}
-			return cpuI > cpuJ
-		case sortMemory:
-			memI := m.stats[result[i].ID].MemPercent
-			memJ := m.stats[result[j].ID].MemPercent
-			if memI == memJ {
-				return result[i].Name < result[j].Name
-			}
-			return memI > memJ
-		case sortImage:
-			if result[i].Image == result[j].Image {
-				return result[i].Name < result[j].Name
-			}
-			return result[i].Image < result[j].Image
-		default:
-			return result[i].Name < result[j].Name
+func (m Model) handleNetFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "enter":
+		m.netFiltering = false
+		if m.netFilterText == "" {
+			m.netCursor = 0
 		}
-	})
+	case "ctrl+u":
+		m.netFilterText = ""
+		m.netCursor = 0
+	case "backspace":
+		backspaceTextInput(&m.netFilterText)
+		m.netCursor = 0
+	default:
+		if appendTextInput(&m.netFilterText, msg) {
+			m.netCursor = 0
+		}
+	}
+	m.clampNetCursorToFiltered()
+	return m, nil
+}
 
-	return result
+func (m Model) filteredContainers() []docker.ContainerInfo {
+	key := filteredCacheKey{filter: m.filterText, sortMode: m.sortMode, n: len(m.containers)}
+	if m.filteredCache != nil && m.filteredCacheKey == key {
+		return m.filteredCache
+	}
+	return m.computeFilteredContainers()
 }
 
 func (m Model) filteredVolumes() []docker.VolumeInfo {
-	if m.filterText == "" {
+	if m.volFilterText == "" {
 		return m.volumes
 	}
-	q := strings.ToLower(m.filterText)
+	q := strings.ToLower(m.volFilterText)
 	var out []docker.VolumeInfo
 	for _, vol := range m.volumes {
 		if strings.Contains(strings.ToLower(vol.Name), q) ||
 			strings.Contains(strings.ToLower(vol.Driver), q) {
 			out = append(out, vol)
+		}
+	}
+	return out
+}
+
+func (m Model) filteredNetworks() []docker.NetworkResource {
+	if m.netFilterText == "" {
+		return m.networks
+	}
+	q := strings.ToLower(m.netFilterText)
+	var out []docker.NetworkResource
+	for _, net := range m.networks {
+		if strings.Contains(strings.ToLower(net.Name), q) ||
+			strings.Contains(strings.ToLower(net.Driver), q) {
+			out = append(out, net)
 		}
 	}
 	return out
@@ -824,19 +883,33 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputText = ""
 			m.dialog = dialogNone
 		case "backspace":
-			if len(m.inputText) > 0 {
-				m.inputText = m.inputText[:len(m.inputText)-1]
-			}
+			backspaceTextInput(&m.inputText)
 		default:
-			if len(msg.String()) == 1 {
-				m.inputText += msg.String()
+			if appendTextInput(&m.inputText, msg) {
 			}
 		}
 
 	case dialogHelp:
 		switch msg.String() {
+		case "up", "k":
+			if m.helpScroll > 0 {
+				m.helpScroll--
+			}
+		case "down", "j":
+			if m.helpScroll < m.helpDialogMaxScroll() {
+				m.helpScroll++
+			}
+		case "pgup":
+			m.helpScroll = max(0, m.helpScroll-m.helpDialogMaxVisible()/2)
+		case "pgdown":
+			m.helpScroll = min(m.helpDialogMaxScroll(), m.helpScroll+m.helpDialogMaxVisible()/2)
+		case "home", "g":
+			m.helpScroll = 0
+		case "end", "G":
+			m.helpScroll = m.helpDialogMaxScroll()
 		case "esc", "q", "?":
 			m.dialog = dialogNone
+			m.helpScroll = 0
 		}
 
 	case dialogCommandPalette:
@@ -847,12 +920,14 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.commandPaletteResults = nil
 		case "enter":
 			if m.commandPaletteCursor < len(m.commandPaletteResults) {
-				cmd := m.commandPaletteResults[m.commandPaletteCursor].Action
+				run := m.commandPaletteResults[m.commandPaletteCursor].Run
 				m.dialog = dialogNone
 				m.commandPaletteText = ""
 				m.commandPaletteResults = nil
-				if cmd != nil {
-					return m, cmd()
+				if run != nil {
+					var cmd tea.Cmd
+					m, cmd = run(m)
+					return m, cmd
 				}
 			}
 		case "up", "ctrl+p":
@@ -864,14 +939,11 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.commandPaletteCursor++
 			}
 		case "backspace":
-			if len(m.commandPaletteText) > 0 {
-				m.commandPaletteText = m.commandPaletteText[:len(m.commandPaletteText)-1]
-				m.commandPaletteCursor = 0
-				m.commandPaletteResults = m.filterCommands(m.commandPaletteText)
-			}
+			backspaceTextInput(&m.commandPaletteText)
+			m.commandPaletteCursor = 0
+			m.commandPaletteResults = m.filterCommands(m.commandPaletteText)
 		default:
-			if len(msg.String()) == 1 {
-				m.commandPaletteText += msg.String()
+			if appendTextInput(&m.commandPaletteText, msg) {
 				m.commandPaletteCursor = 0
 				m.commandPaletteResults = m.filterCommands(m.commandPaletteText)
 			}
@@ -883,14 +955,102 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ── Detail ──────────────────────────────────────────────────────────────
 
 func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.detailTab == tabTerminal && m.terminalActive {
+		if !m.terminalInputFocused && isTerminalPrintableKey(msg) {
+			m.terminalInputFocused = true
+		}
+		if m.terminalInputFocused {
+			return m.handleDetailTerminalInput(msg)
+		}
+	}
+
+	switch msg.String() {
+	case "esc":
+		if m.detailTab == tabLogs && len(m.logViewer.Selection) > 0 {
+			m.logViewer.ClearSelection()
+			return m, nil
+		}
+		m.stopLogStreaming()
+		m.stopTerminalSession()
+		m.terminalInputFocused = false
+		m.view = viewList
+		m.inspected = nil
+		return m, m.refreshContainers()
+	case "h", "backspace":
+		if m.detailTab == tabTerminal && m.terminalActive {
+			return m, nil
+		}
+		if m.detailTab == tabLogs && len(m.logViewer.Selection) > 0 {
+			m.logViewer.ClearSelection()
+			return m, nil
+		}
+		m.stopLogStreaming()
+		m.stopTerminalSession()
+		m.terminalInputFocused = false
+		m.view = viewList
+		m.inspected = nil
+		return m, m.refreshContainers()
+	case "q":
+		return m.quit()
+	case "tab", "right":
+		m.detailTab = (m.detailTab + 1) % tabCount
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "shift+tab", "left":
+		m.detailTab = (m.detailTab + tabCount - 1) % tabCount
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "1":
+		m.detailTab = tabInfo
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "2":
+		m.detailTab = tabResources
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "3":
+		m.detailTab = tabEnv
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "4":
+		m.detailTab = tabLogs
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "5":
+		m.detailTab = tabTerminal
+		m.detailScroll = 0
+		return m.onTabSwitch()
+	case "6":
+		m.detailTab = tabDiff
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "7":
+		m.detailTab = tabProcesses
+		m.detailScroll = 0
+		m.terminalInputFocused = false
+		return m.onTabSwitch()
+	case "?":
+		m.dismissHint()
+		m.dialog = dialogHelp
+		m.helpScroll = 0
+		return m, nil
+	}
+
 	if m.detailTab == tabLogs {
 		rows := m.detailLogContentRows()
 		switch msg.String() {
 		case "up", "k":
-			m.logViewer.ScrollBy(-1, rows)
+			m.logViewer.MoveFocus(-1, rows)
 			return m, nil
 		case "down", "j":
-			m.logViewer.ScrollBy(1, rows)
+			m.logViewer.MoveFocus(1, rows)
 			return m, nil
 		case "pgup":
 			m.logViewer.ScrollPage(-1, rows)
@@ -900,189 +1060,152 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "home":
 			m.logViewer.ScrollHome(rows)
+			m.logViewer.Focused = 0
 			return m, nil
 		case "end":
 			m.logViewer.ScrollEnd()
+			filtered := m.logViewer.FilteredEntries()
+			if len(filtered) > 0 {
+				m.logViewer.Focused = len(filtered) - 1
+			}
+			return m, nil
+		case " ":
+			m.logViewer.ToggleSelectFocused()
+			return m, nil
+		case "V":
+			m.logViewer.SelectRangeToFocused()
+			return m, nil
+		case "y":
+			return m.copyLogViewerLines(&m.logViewer)
+		case "L":
+			m.logViewer.ShowLegend = !m.logViewer.ShowLegend
 			return m, nil
 		}
 	}
 
-	if m.detailTab == tabTerminal {
+	if m.detailTab == tabTerminal && !m.terminalInputFocused {
 		switch msg.String() {
 		case "ctrl+\\":
 			m.stopTerminalSession()
 			m.notify("Terminal detached", false)
 			return m, nil
+		case "i", "enter":
+			m.terminalInputFocused = true
+			return m, nil
 		case "x":
 			if m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
 				return m, m.startTerminal(m.inspected.ID)
 			}
-			m.terminalInput += "x"
 			return m, nil
-		case "enter":
-			if m.terminalActive {
-				line := m.terminalInput
-				m.terminalInput = ""
-				return m, m.sendTerminalInput(line + "\n")
+		}
+	}
+
+	if !(m.detailTab == tabTerminal && m.terminalInputFocused) {
+		switch msg.String() {
+		case "up", "k":
+			if m.detailTab == tabTerminal {
+				m.terminalFollow = false
 			}
-		case "backspace":
-			if len(m.terminalInput) > 0 {
-				m.terminalInput = m.terminalInput[:len(m.terminalInput)-1]
-				return m, nil
+			if m.detailScroll > 0 {
+				m.detailScroll--
 			}
-		default:
-			if len(msg.String()) == 1 {
-				m.terminalInput += msg.String()
-				return m, nil
+			if m.detailTab == tabTerminal {
+				m.syncTerminalScroll()
+			}
+		case "down", "j":
+			if m.detailTab == tabTerminal {
+				if !m.terminalFollow {
+					m.detailScroll++
+				}
+				m.syncTerminalScroll()
+			} else {
+				m.detailScroll++
+			}
+		case "pgup":
+			step := detailPageStep(m.height)
+			if m.detailTab == tabTerminal {
+				m.terminalFollow = false
+			}
+			m.detailScroll = max(0, m.detailScroll-step)
+			if m.detailTab == tabTerminal {
+				m.syncTerminalScroll()
+			}
+		case "pgdown":
+			step := detailPageStep(m.height)
+			if m.detailTab == tabTerminal {
+				if !m.terminalFollow {
+					m.detailScroll += step
+				}
+				m.syncTerminalScroll()
+			} else {
+				m.detailScroll += step
+			}
+		case "home":
+			if m.detailTab == tabTerminal {
+				m.terminalFollow = false
+			}
+			m.detailScroll = 0
+			if m.detailTab == tabTerminal {
+				m.syncTerminalScroll()
+			}
+		case "end":
+			if m.detailTab == tabTerminal {
+				m.terminalFollow = true
+			}
+			m.detailScroll = 1 << 20
+			if m.detailTab == tabTerminal {
+				m.syncTerminalScroll()
+			}
+		}
+	}
+
+	if m.detailAllowsContainerActions() {
+		switch msg.String() {
+		case "s":
+			if m.inspected != nil {
+				if m.inspected.State == "running" {
+					return m, m.stopContainer(m.inspected.ID, m.inspected.Name)
+				}
+				return m, m.startContainer(m.inspected.ID, m.inspected.Name)
+			}
+		case "R":
+			if m.inspected != nil {
+				return m, m.restartContainer(m.inspected.ID, m.inspected.Name)
+			}
+		case "P":
+			if m.inspected != nil {
+				switch m.inspected.State {
+				case "running":
+					return m, m.pauseContainer(m.inspected.ID, m.inspected.Name)
+				case "paused":
+					return m, m.unpauseContainer(m.inspected.ID, m.inspected.Name)
+				default:
+					m.notify("Container must be running or paused", true)
+				}
+			}
+		case "K":
+			if m.inspected != nil {
+				if m.inspected.State == "running" || m.inspected.State == "paused" {
+					return m, m.killContainer(m.inspected.ID, m.inspected.Name)
+				}
+				m.notify("Container must be running or paused", true)
+			}
+		case "d":
+			if m.inspected != nil {
+				c := m.inspected
+				m.dialog = dialogConfirm
+				m.confirmMsg = fmt.Sprintf("Remove container %q?\n\nThis cannot be undone.", c.Name)
+				m.confirmOK = m.buildDetailRemoveCmd(c.ID, c.Name)
+				m.view = viewList
+			}
+		case "e":
+			if m.inspected != nil && m.inspected.State == "running" {
+				return m, m.execIntoContainerCmd(m.inspected.ID)
 			}
 		}
 	}
 
 	switch msg.String() {
-	case "esc", "h", "backspace":
-		m.stopLogStreaming()
-		m.stopTerminalSession()
-		m.view = viewList
-		m.inspected = nil
-		return m, m.refreshContainers()
-	case "q":
-		return m.quit()
-	case "tab", "right":
-		m.detailTab = (m.detailTab + 1) % tabCount
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "shift+tab", "left":
-		m.detailTab = (m.detailTab + tabCount - 1) % tabCount
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "1":
-		m.detailTab = tabInfo
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "2":
-		m.detailTab = tabResources
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "3":
-		m.detailTab = tabEnv
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "4":
-		m.detailTab = tabLogs
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "5":
-		m.detailTab = tabTerminal
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "6":
-		m.detailTab = tabDiff
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "7":
-		m.detailTab = tabProcesses
-		m.detailScroll = 0
-		return m.onTabSwitch()
-	case "up", "k":
-		if m.detailTab == tabTerminal {
-			m.terminalFollow = false
-		}
-		if m.detailScroll > 0 {
-			m.detailScroll--
-		}
-		if m.detailTab == tabTerminal {
-			m.syncTerminalScroll()
-		}
-	case "down", "j":
-		if m.detailTab == tabTerminal {
-			if !m.terminalFollow {
-				m.detailScroll++
-			}
-			m.syncTerminalScroll()
-		} else {
-			m.detailScroll++
-		}
-	case "pgup":
-		step := detailPageStep(m.height)
-		if m.detailTab == tabTerminal {
-			m.terminalFollow = false
-		}
-		m.detailScroll = max(0, m.detailScroll-step)
-		if m.detailTab == tabTerminal {
-			m.syncTerminalScroll()
-		}
-	case "pgdown":
-		step := detailPageStep(m.height)
-		if m.detailTab == tabTerminal {
-			if !m.terminalFollow {
-				m.detailScroll += step
-			}
-			m.syncTerminalScroll()
-		} else {
-			m.detailScroll += step
-		}
-	case "home":
-		if m.detailTab == tabTerminal {
-			m.terminalFollow = false
-		}
-		m.detailScroll = 0
-		if m.detailTab == tabTerminal {
-			m.syncTerminalScroll()
-		}
-	case "end":
-		if m.detailTab == tabTerminal {
-			m.terminalFollow = true
-		}
-		m.detailScroll = 1 << 20
-		if m.detailTab == tabTerminal {
-			m.syncTerminalScroll()
-		}
-	case "s":
-		if m.inspected != nil {
-			if m.inspected.State == "running" {
-				return m, m.stopContainer(m.inspected.ID, m.inspected.Name)
-			}
-			return m, m.startContainer(m.inspected.ID, m.inspected.Name)
-		}
-	case "R":
-		if m.inspected != nil {
-			return m, m.restartContainer(m.inspected.ID, m.inspected.Name)
-		}
-	case "P":
-		if m.inspected != nil {
-			switch m.inspected.State {
-			case "running":
-				return m, m.pauseContainer(m.inspected.ID, m.inspected.Name)
-			case "paused":
-				return m, m.unpauseContainer(m.inspected.ID, m.inspected.Name)
-			default:
-				m.notify("Container must be running or paused", true)
-			}
-		}
-	case "K":
-		if m.inspected != nil {
-			if m.inspected.State == "running" || m.inspected.State == "paused" {
-				return m, m.killContainer(m.inspected.ID, m.inspected.Name)
-			}
-			m.notify("Container must be running or paused", true)
-		}
-	case "d":
-		if m.inspected != nil {
-			c := m.inspected
-			m.dialog = dialogConfirm
-			m.confirmMsg = fmt.Sprintf("Remove container %q?\n\nThis cannot be undone.", c.Name)
-			m.confirmOK = func() tea.Msg {
-				if err := m.client.RemoveContainer(c.ID, true); err != nil {
-					return errMsg{err}
-				}
-				return actionDoneMsg{"Removed", c.Name}
-			}
-			m.view = viewList
-		}
-	case "e":
-		if m.inspected != nil && m.inspected.State == "running" {
-			return m, m.execIntoContainerCmd(m.inspected.ID)
-		}
 	case "l":
 		if m.detailTab == tabLogs && m.inspected != nil {
 			if m.liveLogging {
@@ -1119,8 +1242,14 @@ func (m Model) onTabSwitch() (tea.Model, tea.Cmd) {
 	}
 	if m.detailTab != tabTerminal {
 		m.stopTerminalSession()
+		m.terminalInputFocused = false
 	} else {
 		m.terminalFollow = true
+		if m.terminalActive {
+			m.terminalInputFocused = true
+		} else {
+			m.terminalInputFocused = false
+		}
 		m.syncTerminalScroll()
 	}
 	if m.detailTab == tabTerminal && m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
@@ -1143,22 +1272,25 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.centralLogRegex = !m.centralLogRegex
 			m.centralLogs.SetUseRegex(m.centralLogRegex)
 		case "backspace":
-			if len(m.centralLogFilter) > 0 {
-				m.centralLogFilter = m.centralLogFilter[:len(m.centralLogFilter)-1]
-				m.centralLogs.SetFilter(m.centralLogFilter)
-			}
+			backspaceTextInput(&m.centralLogFilter)
+			m.centralLogs.SetFilter(m.centralLogFilter)
 		default:
-			if len(msg.String()) == 1 {
-				m.centralLogFilter += msg.String()
+			if appendTextInput(&m.centralLogFilter, msg) {
 				m.centralLogs.SetFilter(m.centralLogFilter)
 			}
 		}
 		return m, nil
 	}
 
-	height := m.centralLogViewportHeight()
+	height := m.centralLogContentRows()
 	switch msg.String() {
-	case "esc", "h", "backspace":
+	case "esc", "h":
+		if len(m.centralLogs.Selection) > 0 {
+			m.centralLogs.ClearSelection()
+			return m, nil
+		}
+		return m.leaveCentralLogs()
+	case "backspace":
 		return m.leaveCentralLogs()
 	case "q":
 		return m.quit()
@@ -1167,59 +1299,66 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.centralLogFilter = ""
 		m.centralLogs.SetFilter("")
 	case "up", "k":
-		m.centralLogs.ScrollBy(-1, height)
-		if m.centralLogCursor > 0 {
-			m.centralLogCursor--
-		}
-		m.centralLogs.LogCursor = m.centralLogCursor
+		m.centralLogs.MoveFocus(-1, height)
 	case "down", "j":
-		m.centralLogs.ScrollBy(1, height)
-		maxVisible := m.centralLogViewportHeight()
-		if m.centralLogCursor < maxVisible-1 {
-			m.centralLogCursor++
-		}
-		m.centralLogs.LogCursor = m.centralLogCursor
+		m.centralLogs.MoveFocus(1, height)
 	case "pgup":
 		m.centralLogs.ScrollPage(-1, height)
 	case "pgdown":
 		m.centralLogs.ScrollPage(1, height)
 	case "home":
 		m.centralLogs.ScrollHome(height)
+		m.centralLogs.Focused = 0
 	case "end":
 		m.centralLogs.ScrollEnd()
+		filtered := m.centralLogs.FilteredEntries()
+		if len(filtered) > 0 {
+			m.centralLogs.Focused = len(filtered) - 1
+		}
+	case " ":
+		m.centralLogs.ToggleSelectFocused()
+	case "V":
+		m.centralLogs.SelectRangeToFocused()
+	case "a":
+		m.centralLogs.ShowAllContainers()
+	case "L":
+		m.centralLogs.ShowLegend = !m.centralLogs.ShowLegend
 	case "y":
-		return m.copyCentralLogLine()
+		return m.copyLogViewerLines(&m.centralLogs)
 	case "E":
 		return m.promptExportCentralLogs()
+	default:
+		if idx, ok := centralLogTargetIndex(msg.String()); ok && idx < len(m.centralLogTargets) {
+			m.centralLogs.ToggleContainer(m.centralLogTargets[idx].ID)
+		}
 	}
 	return m, nil
 }
 
-func (m Model) copyCentralLogLine() (tea.Model, tea.Cmd) {
-	entries := m.centralLogs.VisibleEntries(m.centralLogViewportHeight())
-	idx := m.centralLogCursor
-	if idx >= 0 && idx < len(entries) {
-		entry := entries[idx]
-		text := entry.Message
-		if !entry.Timestamp.IsZero() {
-			text = entry.Timestamp.Format("15:04:05") + " " + text
+func centralLogTargetIndex(key string) (int, bool) {
+	if len(key) != 1 || key[0] < '1' || key[0] > '9' {
+		return 0, false
+	}
+	return int(key[0] - '1'), true
+}
+
+func (m Model) copyLogViewerLines(viewer *LogViewerState) (tea.Model, tea.Cmd) {
+	entries := viewer.SelectedEntries()
+	if len(entries) == 0 {
+		if entry, ok := viewer.FocusedEntry(); ok {
+			entries = []LogEntry{entry}
 		}
-		if err := CopyToClipboard(text); err != nil {
-			m.notify("Failed to copy: "+err.Error(), true)
-		} else {
-			m.notify("Copied to clipboard", false)
-		}
-	} else if len(entries) > 0 {
-		entry := entries[len(entries)-1]
-		text := entry.Message
-		if !entry.Timestamp.IsZero() {
-			text = entry.Timestamp.Format("15:04:05") + " " + text
-		}
-		if err := CopyToClipboard(text); err != nil {
-			m.notify("Failed to copy: "+err.Error(), true)
-		} else {
-			m.notify("Copied to clipboard", false)
-		}
+	}
+	if len(entries) == 0 {
+		m.notify("No log line to copy", true)
+		return m, nil
+	}
+	if err := CopyLogEntries(entries); err != nil {
+		m.notify("Failed to copy: "+err.Error(), true)
+	} else if len(entries) == 1 {
+		m.notify("Copied to clipboard", false)
+	} else {
+		m.notify(fmt.Sprintf("Copied %d lines", len(entries)), false)
 	}
 	return m, nil
 }
@@ -1236,6 +1375,11 @@ func (m Model) promptExportCentralLogs() (tea.Model, tea.Cmd) {
 
 func (m Model) exportCentralLogs(path string) tea.Cmd {
 	entries := m.centralLogs.Entries
+	if selected := m.centralLogs.SelectedEntries(); len(selected) > 0 {
+		entries = selected
+	} else {
+		entries = m.centralLogs.FilteredEntries()
+	}
 	return func() tea.Msg {
 		var lines []string
 		for _, entry := range entries {
@@ -1273,6 +1417,9 @@ func (m Model) promptExportDetailLogs() (tea.Model, tea.Cmd) {
 
 func (m Model) exportDetailLogs(path string) tea.Cmd {
 	entries := m.logViewer.Entries
+	if selected := m.logViewer.SelectedEntries(); len(selected) > 0 {
+		entries = selected
+	}
 	return func() tea.Msg {
 		var lines []string
 		for _, entry := range entries {
@@ -1299,10 +1446,7 @@ func (m *Model) syncTerminalScroll() {
 	contentWidth := max(boxWidth-6, 24)
 	tabContent := m.renderTerminalTab(m.inspected, contentWidth)
 	lines := strings.Split(tabContent, "\n")
-	availHeight := m.height - 15
-	if availHeight < 5 {
-		availHeight = 5
-	}
+	availHeight := m.detailBoxInnerHeight()
 	maxScroll := max(0, len(lines)-availHeight)
 	m.detailScroll, m.terminalFollow = normalizeTerminalScroll(m.detailScroll, maxScroll, m.terminalFollow)
 }
@@ -1354,12 +1498,7 @@ func (m Model) updateImages(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.dialog = dialogConfirm
 			m.confirmMsg = fmt.Sprintf("Remove image %q?\n\nThis cannot be undone.", tag)
 			id := img.ID
-			m.confirmOK = func() tea.Msg {
-				if err := m.client.RemoveImage(id, false); err != nil {
-					return errMsg{err}
-				}
-				return imageActionDoneMsg{"Removed image", tag}
-			}
+			m.confirmOK = m.buildImageRemoveCmd(id, tag)
 		}
 	case "p":
 		m.loading = true
@@ -1396,12 +1535,12 @@ func (m Model) updateEvents(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.events = nil
 	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
+		if m.eventsCursor > 0 {
+			m.eventsCursor--
 		}
 	case "down", "j":
-		if m.cursor < len(m.events)-1 {
-			m.cursor++
+		if m.eventsCursor < len(m.events)-1 {
+			m.eventsCursor++
 		}
 	}
 	return m, nil
@@ -1420,26 +1559,29 @@ func (m Model) fetchVolumes() tea.Cmd {
 }
 
 func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	vols := m.filteredVolumes()
 	switch msg.String() {
 	case "esc", "q", "h":
 		m.view = viewList
+		m.volFiltering = false
+		m.volFilterText = ""
 	case "up", "k":
 		if m.volCursor > 0 {
 			m.volCursor--
 		}
 	case "down", "j":
-		if m.volCursor < len(m.volumes)-1 {
+		if m.volCursor < len(vols)-1 {
 			m.volCursor++
 		}
 	case "home", "g":
 		m.volCursor = 0
 	case "end", "G":
-		if n := len(m.volumes); n > 0 {
+		if n := len(vols); n > 0 {
 			m.volCursor = n - 1
 		}
 	case " ":
-		if m.volCursor < len(m.volumes) {
-			name := m.volumes[m.volCursor].Name
+		if m.volCursor < len(vols) {
+			name := vols[m.volCursor].Name
 			if m.selected[name] {
 				delete(m.selected, name)
 			} else {
@@ -1450,7 +1592,7 @@ func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.selected) > 0 {
 			m.selected = make(map[string]bool)
 		} else {
-			for _, vol := range m.volumes {
+			for _, vol := range vols {
 				m.selected[vol.Name] = true
 			}
 		}
@@ -1459,11 +1601,12 @@ func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		return m.confirmPruneVolumes()
 	case "/":
-		m.filtering = true
-		m.filterText = ""
+		m.volFiltering = true
+		m.volFilterText = ""
 	case "ctrl+u":
-		m.filterText = ""
+		m.volFilterText = ""
 		m.volCursor = 0
+		m.clampVolCursorToFiltered()
 	case "r":
 		m.loading = true
 		return m, m.fetchVolumes()
@@ -1474,8 +1617,8 @@ func (m Model) updateVolumes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) confirmRemoveVolumes() (tea.Model, tea.Cmd) {
-	if len(m.selected) == 0 && m.volCursor < len(m.volumes) {
-		m.selected[m.volumes[m.volCursor].Name] = true
+	if len(m.selected) == 0 && m.volCursor < len(m.filteredVolumes()) {
+		m.selected[m.filteredVolumes()[m.volCursor].Name] = true
 	}
 	if len(m.selected) == 0 {
 		return m, nil
@@ -1487,21 +1630,23 @@ func (m Model) confirmRemoveVolumes() (tea.Model, tea.Cmd) {
 	msg := fmt.Sprintf("Remove %d volume(s)?\n\n  %s\n\nThis cannot be undone.", len(names), strings.Join(names, ", "))
 	m.dialog = dialogConfirm
 	m.confirmMsg = msg
-	m.confirmOK = func() tea.Msg {
-		var cmds []tea.Cmd
-		for name := range m.selected {
-			cmds = append(cmds, m.removeVolume(name))
-		}
-		m.selected = make(map[string]bool)
-		return tea.Batch(cmds...)
-	}
+	m.confirmOK = m.buildVolumeRemoveCmd(names)
 	return m, nil
+}
+
+func (m Model) buildVolumeRemoveCmd(names []string) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, name := range names {
+		n := name
+		cmds = append(cmds, m.removeVolume(n))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) confirmPruneVolumes() (tea.Model, tea.Cmd) {
 	m.dialog = dialogConfirm
 	m.confirmMsg = "Remove all orphaned volumes?\n\nThis cannot be undone."
-	m.confirmOK = func() tea.Msg { return m.pruneVolumesCmd() }
+	m.confirmOK = m.pruneVolumesCmd()
 	return m, nil
 }
 
@@ -1518,26 +1663,29 @@ func (m Model) fetchNetworks() tea.Cmd {
 }
 
 func (m Model) updateNetworks(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	nets := m.filteredNetworks()
 	switch msg.String() {
 	case "esc", "q", "h":
 		m.view = viewList
+		m.netFiltering = false
+		m.netFilterText = ""
 	case "up", "k":
 		if m.netCursor > 0 {
 			m.netCursor--
 		}
 	case "down", "j":
-		if m.netCursor < len(m.networks)-1 {
+		if m.netCursor < len(nets)-1 {
 			m.netCursor++
 		}
 	case "home", "g":
 		m.netCursor = 0
 	case "end", "G":
-		if n := len(m.networks); n > 0 {
+		if n := len(nets); n > 0 {
 			m.netCursor = n - 1
 		}
 	case " ":
-		if m.netCursor < len(m.networks) {
-			id := m.networks[m.netCursor].ID
+		if m.netCursor < len(nets) {
+			id := nets[m.netCursor].ID
 			if m.selected[id] {
 				delete(m.selected, id)
 			} else {
@@ -1548,18 +1696,19 @@ func (m Model) updateNetworks(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.selected) > 0 {
 			m.selected = make(map[string]bool)
 		} else {
-			for _, net := range m.networks {
+			for _, net := range nets {
 				m.selected[net.ID] = true
 			}
 		}
 	case "d":
 		return m.confirmRemoveNetworks()
 	case "/":
-		m.filtering = true
-		m.filterText = ""
+		m.netFiltering = true
+		m.netFilterText = ""
 	case "ctrl+u":
-		m.filterText = ""
+		m.netFilterText = ""
 		m.netCursor = 0
+		m.clampNetCursorToFiltered()
 	case "r":
 		m.loading = true
 		return m, m.fetchNetworks()
@@ -1570,14 +1719,17 @@ func (m Model) updateNetworks(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) confirmRemoveNetworks() (tea.Model, tea.Cmd) {
-	if len(m.selected) == 0 && m.netCursor < len(m.networks) {
-		m.selected[m.networks[m.netCursor].ID] = true
+	nets := m.filteredNetworks()
+	if len(m.selected) == 0 && m.netCursor < len(nets) {
+		m.selected[nets[m.netCursor].ID] = true
 	}
 	if len(m.selected) == 0 {
 		return m, nil
 	}
+	ids := make([]string, 0, len(m.selected))
 	names := make([]string, 0, len(m.selected))
 	for id := range m.selected {
+		ids = append(ids, id)
 		for _, net := range m.networks {
 			if net.ID == id {
 				names = append(names, net.Name)
@@ -1588,15 +1740,17 @@ func (m Model) confirmRemoveNetworks() (tea.Model, tea.Cmd) {
 	msg := fmt.Sprintf("Remove %d network(s)?\n\n  %s\n\nThis cannot be undone.", len(names), strings.Join(names, ", "))
 	m.dialog = dialogConfirm
 	m.confirmMsg = msg
-	m.confirmOK = func() tea.Msg {
-		var cmds []tea.Cmd
-		for id := range m.selected {
-			cmds = append(cmds, m.removeNetwork(id))
-		}
-		m.selected = make(map[string]bool)
-		return tea.Batch(cmds...)
-	}
+	m.confirmOK = m.buildNetworkRemoveCmd(ids)
 	return m, nil
+}
+
+func (m Model) buildNetworkRemoveCmd(ids []string) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, id := range ids {
+		n := id
+		cmds = append(cmds, m.removeNetwork(n))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) removeNetwork(id string) tea.Cmd {

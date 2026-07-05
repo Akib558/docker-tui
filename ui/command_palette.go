@@ -8,94 +8,96 @@ import (
 
 func (m Model) getCommands() []Command {
 	commands := []Command{
-		{Name: "refresh", Description: "Refresh container list", Action: func() tea.Cmd {
+		{Name: "refresh", Description: "Refresh container list", Run: func(m Model) (Model, tea.Cmd) {
 			m.loading = true
-			return m.refreshContainers()
+			return m, m.refreshContainers()
 		}},
-		{Name: "images", Description: "Open images view", Action: func() tea.Cmd {
+		{Name: "images", Description: "Open images view", Run: func(m Model) (Model, tea.Cmd) {
 			m.view = viewImages
 			m.imgCursor = 0
 			m.loading = true
-			return m.fetchImages()
+			return m, m.fetchImages()
 		}},
-		{Name: "volumes", Description: "Open volumes view", Action: func() tea.Cmd {
+		{Name: "volumes", Description: "Open volumes view", Run: func(m Model) (Model, tea.Cmd) {
 			m.view = viewVolumes
 			m.volCursor = 0
 			m.loading = true
-			return m.fetchVolumes()
+			return m, m.fetchVolumes()
 		}},
-		{Name: "networks", Description: "Open networks view", Action: func() tea.Cmd {
+		{Name: "networks", Description: "Open networks view", Run: func(m Model) (Model, tea.Cmd) {
 			m.view = viewNetworks
 			m.netCursor = 0
 			m.loading = true
-			return m.fetchNetworks()
+			return m, m.fetchNetworks()
 		}},
-		{Name: "logs", Description: "Open centralized logs", Action: func() tea.Cmd {
+		{Name: "logs", Description: "Open centralized logs", Run: func(m Model) (Model, tea.Cmd) {
 			model, cmd := m.openCentralLogs()
-			m = model.(Model)
-			return cmd
+			return model.(Model), cmd
 		}},
-		{Name: "notifications", Description: "Open notification center", Action: func() tea.Cmd {
+		{Name: "events", Description: "Open docker events stream", Run: func(m Model) (Model, tea.Cmd) {
+			m.view = viewEvents
+			m.eventsCursor = 0
+			return m, m.startEventStream()
+		}},
+		{Name: "notifications", Description: "Open notification center", Run: func(m Model) (Model, tea.Cmd) {
 			m.view = viewNotifications
 			m.notifyCursor = len(m.notifyHistory) - 1
-			return nil
+			if m.notifyCursor < 0 {
+				m.notifyCursor = 0
+			}
+			return m, nil
 		}},
-		{Name: "theme", Description: "Open theme picker", Action: func() tea.Cmd {
+		{Name: "theme", Description: "Open theme picker", Run: func(m Model) (Model, tea.Cmd) {
 			m.dialog = dialogTheme
-			return nil
+			return m, nil
 		}},
-		{Name: "help", Description: "Show keyboard reference", Action: func() tea.Cmd {
+		{Name: "help", Description: "Show keyboard reference", Run: func(m Model) (Model, tea.Cmd) {
 			m.dialog = dialogHelp
-			return nil
+			return m, nil
 		}},
-		{Name: "system-prune", Description: "Run docker system prune", Action: func() tea.Cmd {
+		{Name: "system-prune", Description: "Run docker system prune", Run: func(m Model) (Model, tea.Cmd) {
 			m.dialog = dialogConfirm
 			m.confirmMsg = "Run docker system prune?\n\nRemoves stopped containers, dangling images, unused networks, and orphaned volumes."
 			m.confirmOK = m.pruneSystem()
-			return nil
+			return m, nil
 		}},
 	}
 
-	// Add container-specific commands if a container is selected
 	if c := m.selectedContainer(); c != nil {
 		commands = append(commands, []Command{
-			{Name: "start", Description: "Start selected container", Action: func() tea.Cmd {
+			{Name: "start", Description: "Start selected container", Run: func(m Model) (Model, tea.Cmd) {
 				if c.State != "running" {
-					return m.startContainer(c.ID, c.Name)
+					return m, m.startContainer(c.ID, c.Name)
 				}
-				return nil
+				return m, nil
 			}},
-			{Name: "stop", Description: "Stop selected container", Action: func() tea.Cmd {
+			{Name: "stop", Description: "Stop selected container", Run: func(m Model) (Model, tea.Cmd) {
 				if c.State == "running" {
-					return m.stopContainer(c.ID, c.Name)
+					return m, m.stopContainer(c.ID, c.Name)
 				}
-				return nil
+				return m, nil
 			}},
-			{Name: "restart", Description: "Restart selected container", Action: func() tea.Cmd {
-				return m.restartContainer(c.ID, c.Name)
+			{Name: "restart", Description: "Restart selected container", Run: func(m Model) (Model, tea.Cmd) {
+				return m, m.restartContainer(c.ID, c.Name)
 			}},
-			{Name: "pause", Description: "Pause/unpause selected container", Action: func() tea.Cmd {
+			{Name: "pause", Description: "Pause/unpause selected container", Run: func(m Model) (Model, tea.Cmd) {
 				model, cmd := m.doPauseUnpause()
-				m = model.(Model)
-				return cmd
+				return model.(Model), cmd
 			}},
-			{Name: "kill", Description: "Kill selected container", Action: func() tea.Cmd {
-				return m.killContainer(c.ID, c.Name)
+			{Name: "kill", Description: "Kill selected container", Run: func(m Model) (Model, tea.Cmd) {
+				return m, m.killContainer(c.ID, c.Name)
 			}},
-			{Name: "remove", Description: "Remove selected container", Action: func() tea.Cmd {
+			{Name: "remove", Description: "Remove selected container", Run: func(m Model) (Model, tea.Cmd) {
 				model, cmd := m.confirmRemove()
-				m = model.(Model)
-				return cmd
+				return model.(Model), cmd
 			}},
-			{Name: "exec", Description: "Exec into selected container", Action: func() tea.Cmd {
+			{Name: "exec", Description: "Exec into selected container", Run: func(m Model) (Model, tea.Cmd) {
 				model, cmd := m.execIntoContainer()
-				m = model.(Model)
-				return cmd
+				return model.(Model), cmd
 			}},
-			{Name: "details", Description: "Open container details", Action: func() tea.Cmd {
+			{Name: "details", Description: "Open container details", Run: func(m Model) (Model, tea.Cmd) {
 				model, cmd := m.openDetail(*c)
-				m = model.(Model)
-				return cmd
+				return model.(Model), cmd
 			}},
 		}...)
 	}

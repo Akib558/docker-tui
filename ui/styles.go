@@ -20,6 +20,7 @@ var (
 	colorBgSelected lipgloss.Color
 	colorBorder     lipgloss.Color
 	colorDim        lipgloss.Color
+	colorBarTrack   lipgloss.Color
 	colorCyan       lipgloss.Color
 	colorTitleFg    lipgloss.Color
 )
@@ -27,44 +28,47 @@ var (
 // ── Style vars (rebuilt by rebuildStyles) ────────────────────────────────
 
 var (
-	titleStyle         lipgloss.Style
-	listHeaderStyle    lipgloss.Style
-	listItemStyle      lipgloss.Style
-	listItemSelStyle   lipgloss.Style
-	statusRunning      lipgloss.Style
-	statusStopped      lipgloss.Style
-	statusOther        lipgloss.Style
-	detailBoxStyle     lipgloss.Style
-	detailLabelStyle   lipgloss.Style
-	detailValueStyle   lipgloss.Style
-	sectionHeaderStyle lipgloss.Style
-	activeTabStyle     lipgloss.Style
-	inactiveTabStyle   lipgloss.Style
-	helpBarStyle       lipgloss.Style
-	helpKeyStyle       lipgloss.Style
-	helpDescStyle      lipgloss.Style
-	notifySuccessStyle lipgloss.Style
-	notifyErrorStyle   lipgloss.Style
-	tableHeaderStyle   lipgloss.Style
-	cursorStyle        lipgloss.Style
-	statCardBorder     lipgloss.Style
-	statCardLabel      lipgloss.Style
-	statCardValue      lipgloss.Style
-	dialogStyle        lipgloss.Style
-	dialogTitleStyle   lipgloss.Style
-	inputStyle         lipgloss.Style
-	statusBarStyle     lipgloss.Style
-	alertStyle         lipgloss.Style
-	filterBarStyle     lipgloss.Style
-	selectedMarkStyle  lipgloss.Style
-	dimOverlayStyle    lipgloss.Style
-	columnHeaderStyle  lipgloss.Style
-	eventTypeContainer lipgloss.Style
-	eventTypeNetwork   lipgloss.Style
-	eventTypeVolume    lipgloss.Style
-	eventActionStart   lipgloss.Style
-	eventActionStop    lipgloss.Style
-	eventActionOther   lipgloss.Style
+	titleStyle           lipgloss.Style
+	listHeaderStyle      lipgloss.Style
+	listItemStyle        lipgloss.Style
+	listItemSelStyle     lipgloss.Style
+	listRowCursorStyle   lipgloss.Style
+	listRowSelectedStyle lipgloss.Style
+	listRowAltStyle      lipgloss.Style
+	statusRunning        lipgloss.Style
+	statusStopped        lipgloss.Style
+	statusOther          lipgloss.Style
+	detailBoxStyle       lipgloss.Style
+	detailLabelStyle     lipgloss.Style
+	detailValueStyle     lipgloss.Style
+	sectionHeaderStyle   lipgloss.Style
+	activeTabStyle       lipgloss.Style
+	inactiveTabStyle     lipgloss.Style
+	helpBarStyle         lipgloss.Style
+	helpKeyStyle         lipgloss.Style
+	helpDescStyle        lipgloss.Style
+	notifySuccessStyle   lipgloss.Style
+	notifyErrorStyle     lipgloss.Style
+	tableHeaderStyle     lipgloss.Style
+	cursorStyle          lipgloss.Style
+	statCardBorder       lipgloss.Style
+	statCardLabel        lipgloss.Style
+	statCardValue        lipgloss.Style
+	dialogStyle          lipgloss.Style
+	dialogTitleStyle     lipgloss.Style
+	inputStyle           lipgloss.Style
+	statusBarStyle       lipgloss.Style
+	alertStyle           lipgloss.Style
+	filterBarStyle       lipgloss.Style
+	selectedMarkStyle    lipgloss.Style
+	dimOverlayStyle      lipgloss.Style
+	columnHeaderStyle    lipgloss.Style
+	eventTypeContainer   lipgloss.Style
+	eventTypeNetwork     lipgloss.Style
+	eventTypeVolume      lipgloss.Style
+	eventActionStart     lipgloss.Style
+	eventActionStop      lipgloss.Style
+	eventActionOther     lipgloss.Style
 )
 
 func init() {
@@ -85,6 +89,7 @@ func applyTheme(t *config.Theme) {
 	colorBgSelected = lipgloss.Color(t.BgSelected)
 	colorBorder = lipgloss.Color(t.Border)
 	colorDim = lipgloss.Color(t.Dim)
+	colorBarTrack = lipgloss.Color(t.Border)
 	colorCyan = lipgloss.Color(t.Cyan)
 	colorTitleFg = lipgloss.Color(t.TitleFg)
 	rebuildStyles()
@@ -95,13 +100,26 @@ func rebuildStyles() {
 		Bold(true).Foreground(colorTitleFg).Background(colorPrimary).Padding(0, 2)
 
 	listHeaderStyle = lipgloss.NewStyle().
-		Bold(true).Foreground(colorSecondary).
+		Bold(true).Foreground(colorMuted).
 		BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorBorder)
 
 	listItemStyle = lipgloss.NewStyle().Foreground(colorText)
 
 	listItemSelStyle = lipgloss.NewStyle().
 		Foreground(colorText).Background(colorBgSelected).Bold(true)
+
+	listRowCursorStyle = lipgloss.NewStyle().
+		Foreground(colorText).
+		Background(colorBgSelected).
+		Bold(true)
+
+	listRowSelectedStyle = lipgloss.NewStyle().
+		Foreground(colorText).
+		Background(colorBgSelected)
+
+	listRowAltStyle = lipgloss.NewStyle().
+		Foreground(colorText).
+		Background(colorBgAlt)
 
 	statusRunning = lipgloss.NewStyle().Bold(true).Foreground(colorSuccess)
 	statusStopped = lipgloss.NewStyle().Bold(true).Foreground(colorDanger)
@@ -115,19 +133,18 @@ func rebuildStyles() {
 
 	sectionHeaderStyle = lipgloss.NewStyle().
 		Bold(true).Foreground(colorPrimary).
-		BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorDim)
+		BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorBorder)
 
 	activeTabStyle = lipgloss.NewStyle().
-		Bold(true).Foreground(colorPrimary).
-		BorderBottom(true).BorderStyle(lipgloss.ThickBorder()).BorderForeground(colorPrimary).
+		Bold(true).Foreground(colorTitleFg).Background(colorPrimary).
 		Padding(0, 1)
 
 	inactiveTabStyle = lipgloss.NewStyle().
-		Foreground(colorMuted).Padding(0, 1).
-		BorderBottom(true).BorderStyle(lipgloss.ThickBorder()).BorderForeground(colorDim)
+		Foreground(colorMuted).Padding(0, 1)
 
 	helpBarStyle = lipgloss.NewStyle().
-		Foreground(colorMuted).Background(colorBgAlt).Padding(0, 1)
+		Foreground(colorMuted).Background(colorBgAlt).Padding(0, 1).
+		BorderTop(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorBorder)
 	helpKeyStyle = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 	helpDescStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
@@ -140,7 +157,7 @@ func rebuildStyles() {
 		BorderLeft(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorDanger).
 		PaddingLeft(1)
 
-	tableHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorSecondary)
+	tableHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorMuted)
 	columnHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(colorMuted)
 	cursorStyle = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 
@@ -197,34 +214,4 @@ func stateStyle(state string) lipgloss.Style {
 	}
 }
 
-func stateIcon(state string) string {
-	switch state {
-	case "running":
-		return "●"
-	case "exited":
-		return "○"
-	case "paused":
-		return "◑"
-	case "restarting":
-		return "↻"
-	case "dead":
-		return "✕"
-	case "created":
-		return "◇"
-	default:
-		return "?"
-	}
-}
-
-func healthIcon(health string) string {
-	switch health {
-	case "healthy":
-		return lipgloss.NewStyle().Foreground(colorSuccess).Render("♥")
-	case "unhealthy":
-		return lipgloss.NewStyle().Foreground(colorDanger).Render("♥")
-	case "starting":
-		return lipgloss.NewStyle().Foreground(colorWarning).Render("♥")
-	default:
-		return ""
-	}
-}
+func stateIcon(state string) string { return stateGlyph(state) }

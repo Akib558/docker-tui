@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/akib558/docker-tui/config"
 	"github.com/akib558/docker-tui/docker"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestSelectCentralLogTargetsUsesSelectedContainers(t *testing.T) {
@@ -230,18 +233,18 @@ func TestSortLogEntriesUsesTimestampThenSequence(t *testing.T) {
 
 func TestDetailLogsScrollMovesOneRenderedRow(t *testing.T) {
 	m := Model{
-		height:    20,
+		height:    10,
 		detailTab: tabLogs,
 		logViewer: NewLogViewerState(20, nil),
 	}
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 12; i++ {
 		m.logViewer.Append(LogEntry{Message: string(rune('0' + i)), Sequence: int64(i)})
 	}
 
 	model, _ := m.updateDetail(tea.KeyMsg{Type: tea.KeyHome})
 	moved, _ := model.(Model).updateDetail(tea.KeyMsg{Type: tea.KeyDown})
 	gotModel := moved.(Model)
-	rows := gotModel.logViewer.VisibleEntries(gotModel.logViewportHeight() - 1)
+	rows := gotModel.logViewer.VisibleEntries(gotModel.detailLogContentRows())
 
 	if gotModel.logViewer.Follow {
 		t.Fatalf("expected one-step down from home to remain paused")
@@ -254,18 +257,18 @@ func TestDetailLogsScrollMovesOneRenderedRow(t *testing.T) {
 func TestDetailLogsMouseScrollMovesOneRenderedRow(t *testing.T) {
 	m := Model{
 		view:      viewDetail,
-		height:    20,
+		height:    10,
 		detailTab: tabLogs,
 		logViewer: NewLogViewerState(20, nil),
 	}
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 12; i++ {
 		m.logViewer.Append(LogEntry{Message: string(rune('0' + i)), Sequence: int64(i)})
 	}
 
-	m.logViewer.ScrollHome(m.logViewportHeight() - 1)
+	m.logViewer.ScrollHome(m.detailLogContentRows())
 	model, _ := m.handleMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
 	gotModel := model.(Model)
-	rows := gotModel.logViewer.VisibleEntries(gotModel.logViewportHeight() - 1)
+	rows := gotModel.logViewer.VisibleEntries(gotModel.detailLogContentRows())
 
 	if gotModel.logViewer.Follow {
 		t.Fatalf("expected one mouse-wheel step down from home to remain paused")
@@ -366,25 +369,117 @@ func TestCentralLogsFilterLifecycle(t *testing.T) {
 	}
 }
 
-func TestCentralLogsMouseScrollMovesOneRenderedRow(t *testing.T) {
+func TestHiddenContainerFilter(t *testing.T) {
+	viewer := NewLogViewerState(20, []LogTarget{
+		{ID: "a1", Name: "api"},
+		{ID: "b2", Name: "worker"},
+	})
+	viewer.Append(
+		LogEntry{ContainerID: "a1", ContainerName: "api", Message: "one", Sequence: 1},
+		LogEntry{ContainerID: "b2", ContainerName: "worker", Message: "two", Sequence: 2},
+	)
+	viewer.ToggleContainer("a1")
+	if got := viewer.FilteredEntries(); len(got) != 1 || got[0].Message != "two" {
+		t.Fatalf("filtered = %#v, want worker line only", got)
+	}
+	viewer.ShowAllContainers()
+	if got := viewer.FilteredEntries(); len(got) != 2 {
+		t.Fatalf("expected all containers visible, got %d", len(got))
+	}
+}
+
+func TestFormatLogLinesForCopyJoinsMultipleLines(t *testing.T) {
+	entries := []LogEntry{
+		{ContainerName: "api", Message: "one", Sequence: 1},
+		{ContainerName: "api", Message: "two", Sequence: 2},
+	}
+	got := formatLogLinesForCopy(entries)
+	if !strings.Contains(got, "one") || !strings.Contains(got, "two") || !strings.Contains(got, "\n") {
+		t.Fatalf("copy text = %q", got)
+	}
+}
+
+func TestCentralLogsToggleContainerByNumber(t *testing.T) {
+	m := Model{
+		view:   viewLogs,
+		width:  100,
+		height: 24,
+		centralLogTargets: []LogTarget{
+			{ID: "a1", Name: "api"},
+			{ID: "b2", Name: "worker"},
+		},
+		centralLogs: NewLogViewerState(20, []LogTarget{
+			{ID: "a1", Name: "api"},
+			{ID: "b2", Name: "worker"},
+		}),
+	}
+	m.centralLogs.Append(
+		LogEntry{ContainerID: "a1", Message: "one", Sequence: 1},
+		LogEntry{ContainerID: "b2", Message: "two", Sequence: 2},
+	)
+
+	model, _ := m.updateCentralLogs(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	got := model.(Model)
+	if !got.centralLogs.IsContainerHidden("a1") {
+		t.Fatal("expected container 1 hidden")
+	}
+	if entries := got.centralLogs.FilteredEntries(); len(entries) != 1 || entries[0].Message != "two" {
+		t.Fatalf("filtered entries = %#v", entries)
+	}
+}
+
+func TestContainerLegendLinesWraps(t *testing.T) {
+	targets := make([]LogTarget, 5)
+	for i := range targets {
+		targets[i] = LogTarget{ID: fmt.Sprintf("id%d", i), Name: fmt.Sprintf("service-%d", i), Color: "#00E676"}
+	}
+	if lines := containerLegendLines(targets, 40); lines < 2 {
+		t.Fatalf("expected wrapped legend lines >= 2 at width 40, got %d", lines)
+	}
+}
+
+func TestCentralLogsMouseScrollMovesFocus(t *testing.T) {
 	m := Model{
 		view:        viewLogs,
-		height:      13,
+		height:      24,
+		width:       100,
 		centralLogs: NewLogViewerState(20, nil),
 	}
-	for i := 1; i <= 8; i++ {
+	for i := 1; i <= 12; i++ {
 		m.centralLogs.Append(LogEntry{Message: string(rune('0' + i)), Sequence: int64(i)})
 	}
 
-	m.centralLogs.ScrollHome(m.centralLogViewportHeight())
+	m.centralLogs.ScrollHome(m.centralLogContentRows())
 	model, _ := m.handleMouse(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
 	got := model.(Model)
-	rows := got.centralLogs.VisibleEntries(got.centralLogViewportHeight())
 
 	if got.centralLogs.Follow {
-		t.Fatalf("expected one wheel-down step from top to remain paused")
+		t.Fatalf("expected wheel-down from home to pause follow")
 	}
-	if len(rows) == 0 || rows[0].Message != "2" {
-		t.Fatalf("expected first rendered row to move to message 2, got %#v", rows)
+	if got.centralLogs.Focused != 1 {
+		t.Fatalf("expected focus on line 2 (index 1), got %d", got.centralLogs.Focused)
+	}
+}
+
+func TestBuildLogCellsColoredTag(t *testing.T) {
+	targets := map[string]LogTarget{
+		"abc": {ID: "abc", Name: "api", Color: "#FF5252"},
+	}
+	cells := buildLogCells(LogEntry{
+		ContainerID:   "abc",
+		ContainerName: "api",
+		Message:       "hello",
+	}, 80, true, targets, nil)
+	if len(cells) < 2 {
+		t.Fatalf("expected tag+message cells, got %d", len(cells))
+	}
+	foundTag := false
+	for _, c := range cells {
+		if c.BG == lipgloss.Color("#FF5252") {
+			foundTag = true
+		}
+	}
+	if !foundTag {
+		t.Fatalf("expected colored tag cell, got %#v", cells)
 	}
 }
