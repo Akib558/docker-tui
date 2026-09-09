@@ -43,7 +43,7 @@ func renderLogLegend(width int) string {
 		lipgloss.NewStyle().Foreground(colorSecondary).Render("tag"),
 	}
 	line := "  " + strings.Join(parts, "  ·  ")
-	return truncateDisplay(line, width)
+	return clampRenderedWidth(line, width)
 }
 
 func buildLogCells(entry LogEntry, bodyW int, showTag bool, targets map[string]LogTarget, cfg *config.Config) []Cell {

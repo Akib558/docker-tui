@@ -12,9 +12,19 @@ import (
 	"github.com/akib558/docker-tui/config"
 	"github.com/akib558/docker-tui/docker"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 var updateGolden = flag.Bool("update", false, "regenerate golden files")
+
+// TestMain forces lipgloss's color profile to TrueColor for every test in
+// this package. Without this, lipgloss/termenv auto-detect Ascii (no-color)
+// because go test's stdout is not a TTY, so goldens and ANSI-decoding
+// invariant tests would see plain text and pass trivially.
+func TestMain(m *testing.M) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	os.Exit(m.Run())
+}
 
 type goldenCase struct {
 	name    string

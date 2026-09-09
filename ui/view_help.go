@@ -20,7 +20,7 @@ func (m *Model) dismissHint() {
 func (m Model) renderGettingStartedHint(w int) string {
 	line := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
 		Render("  press ? for help  ·  : for command palette")
-	return truncateDisplay(line, w)
+	return clampRenderedWidth(line, w)
 }
 
 func (m Model) helpCentered(w int) string {

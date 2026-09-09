@@ -187,9 +187,9 @@ func (m Model) renderStatusStrip(w int) string {
 
 	if w < 80 {
 		if meta != "" {
-			return truncateDisplay(line1+"   "+meta, w)
+			return clampRenderedWidth(line1+"   "+meta, w)
 		}
-		return truncateDisplay(line1, w)
+		return clampRenderedWidth(line1, w)
 	}
 
 	var line2 strings.Builder
@@ -233,7 +233,7 @@ func (m Model) renderStatusStrip(w int) string {
 	}
 
 	if line2.Len() == 0 {
-		return truncateDisplay(line1, w)
+		return clampRenderedWidth(line1, w)
 	}
-	return truncateDisplay(line1, w) + "\n" + truncateDisplay(line2.String(), w)
+	return clampRenderedWidth(line1, w) + "\n" + clampRenderedWidth(line2.String(), w)
 }
