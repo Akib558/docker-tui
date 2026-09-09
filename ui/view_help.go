@@ -144,7 +144,7 @@ func (m Model) detailHelp(w int) string {
 // ── Notification ─────────────────────────────────────────────────────────
 
 func (m Model) renderNotification() string {
-	if m.notification == "" || time.Since(m.notifyTime) > 4*time.Second {
+	if m.notification == "" || since(m.notifyTime) > 4*time.Second {
 		return ""
 	}
 	if m.notifyIsErr {

@@ -74,7 +74,7 @@ func renderSelectableRow(lineW int, kind ListRowKind, content string) string {
 }
 
 func (m Model) hasActiveNotification() bool {
-	return m.notification != "" && time.Since(m.notifyTime) <= 4*time.Second
+	return m.notification != "" && since(m.notifyTime) <= 4*time.Second
 }
 
 func renderHelpBar(width int, keys string) string {

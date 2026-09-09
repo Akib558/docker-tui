@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/akib558/docker-tui/docker"
 	"github.com/charmbracelet/lipgloss"
@@ -203,7 +202,7 @@ func (m Model) renderInfoTwoCol(c *docker.ContainerInfo, width int) string {
 		right.WriteString(renderHealthKV("Health", c.Health))
 	}
 	if !c.StartedAt.IsZero() && c.State == "running" {
-		right.WriteString(renderKV("Uptime", formatUptime(time.Since(c.StartedAt))))
+		right.WriteString(renderKV("Uptime", formatUptime(since(c.StartedAt))))
 	}
 	if !c.Created.IsZero() {
 		right.WriteString(renderKV("Created", c.Created.Format("2006-01-02 15:04")))
@@ -237,7 +236,7 @@ func (m Model) renderInfoSingleCol(c *docker.ContainerInfo, width int) string {
 		b.WriteString(renderHealthKV("Health", c.Health))
 	}
 	if !c.StartedAt.IsZero() && c.State == "running" {
-		b.WriteString(renderKV("Uptime", formatUptime(time.Since(c.StartedAt))))
+		b.WriteString(renderKV("Uptime", formatUptime(since(c.StartedAt))))
 	}
 	if c.Platform != "" {
 		b.WriteString(renderKV("Platform", c.Platform))

@@ -157,7 +157,7 @@ func formatStateSummaryCompact(state string, count int) string {
 func (m Model) renderRefreshMeta() string {
 	var parts []string
 	if !m.lastRefresh.IsZero() {
-		age := time.Since(m.lastRefresh).Round(time.Second)
+		age := since(m.lastRefresh).Round(time.Second)
 		parts = append(parts, lipgloss.NewStyle().Foreground(colorDim).Render(
 			fmt.Sprintf("⟳ %s ago", formatUptime(age))))
 	}

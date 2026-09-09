@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/akib558/docker-tui/docker"
 	"github.com/charmbracelet/lipgloss"
@@ -141,7 +140,7 @@ func (m Model) renderHeader(w int) string {
 		center = strings.Join(parts, dot)
 	}
 
-	ts := lipgloss.NewStyle().Foreground(colorMuted).Render(time.Now().Format("15:04:05"))
+	ts := lipgloss.NewStyle().Foreground(colorMuted).Render(nowFunc().Format("15:04:05"))
 
 	leftLen := lipgloss.Width(logo)
 	midLen := lipgloss.Width(center)
