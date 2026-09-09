@@ -1,0 +1,29 @@
+ ⬡ DOCKER TUI dev                                                                                                       
+ 09:26:53                                                                                                               
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Volumes  (3)
+
+  NAME                                              DRIVER        MOUNTPOINT                              SCOPE         
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  pgdata                                           local        /var/lib/docker/volumes/pgdata/_data   local            
+▸ app-cache                                        local        /var/lib/docker/volumes/app-cache/_d…  local            
+  a-volume-with-a-really-long-name-that-must-tru…  local        /var/lib/docker/volumes/a-volume-wit…  local            
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                        j/k nav · space select · d remove · p prune · / filter · ? help · esc back                      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

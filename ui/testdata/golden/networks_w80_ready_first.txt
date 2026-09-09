@@ -1,0 +1,29 @@
+ ⬡ DOCKER TUI dev                                                               
+ 09:26:53                                                                       
+────────────────────────────────────────────────────────────────────────────────
+  Networks  (3)
+
+  NAME                      DRIVER        SCOPE       INTERNAL                  
+────────────────────────────────────────────────────────────────────────────────
+▸ bridge                   bridge       local      no                           
+  host                     host         local      no                           
+  compose_default          bridge       local      yes                          
+
+────────────────────────────────────────────────────────────────────────────────
+         j/k nav · space select · d remove · / filter · ? help · esc back       
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

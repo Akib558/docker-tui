@@ -1,0 +1,29 @@
+ ⬡ DOCKER TUI dev                                                                                                       
+ 09:26:53                                                                                                               
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+CONTAINERS   ● 2 running   ○ 2 stopped   ◑ 1 paused   ◇ 1 created
+⟳ 2h 56m ago   every 2sMEM ██████░░░░░  50%  8.0 GiB/16.0 GiB   LOAD 0.4 0.5 0.6
+
+                                    No containers match filter "zzzz-no-such-thing".                                    
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        j/k nav · enter details · / filter · : commands · s start/stop · D events · space select · ? help · q quit      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

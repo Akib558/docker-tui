@@ -1,0 +1,29 @@
+ ⬡ DOCKER TUI dev                                                                                                       
+ 09:26:53                                                                                                               
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+                          No containers found. Start some containers and press 'r' to refresh.                          
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        j/k nav · enter details · / filter · : commands · s start/stop · D events · space select · ? help · q quit      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

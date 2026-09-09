@@ -1,0 +1,29 @@
+ ⬡ DOCKER TUI dev                       
+ 09:26:53                               
+────────────────────────────────────────
+  Events  (3)  
+  TIME       TYPE          ACTION       
+ACTOR             CONTAINER             
+ID                                      
+────────────────────────────────────────
+▸ 06:00:00  container    start       w a
+  06:01:00  image        pull        n s
+  06:02:00  volume       create      p p
+
+────────────────────────────────────────
+  j/k nav · c clear · ? help · esc back 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

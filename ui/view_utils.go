@@ -109,6 +109,9 @@ func formatPortsSummary(ports []docker.PortBinding) string {
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\a]*(\a|\x1b\\)|\x1b[@-_]`)
 
+// stripANSI removes ANSI escape sequences from s.
+func stripANSI(s string) string { return ansiEscapeRE.ReplaceAllString(s, "") }
+
 func sanitizeOutputText(s string) string {
 	if s == "" {
 		return ""

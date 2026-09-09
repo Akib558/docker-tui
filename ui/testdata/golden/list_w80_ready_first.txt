@@ -1,0 +1,29 @@
+ ⬡ DOCKER TUI dev                                                               
+ 09:26:53                                                                       
+────────────────────────────────────────────────────────────────────────────────
+CONTAINERS   ● 2 running   ○ 2 stopped   ◑ 1 paused   ◇ 1 created
+⟳ 2h 56m ago   every 2sMEM ███░░  50%  8.0 GiB/16.0 GiB   LOAD 0.4 0.5 0.6
+      NAME               IMAGE                  STATUS                          
+────────────────────────────────────────────────────────────────────────────────
+▸ ●✕  postgres-primary   postgres:16            Up 2 days                       
+  ●♥  web-api            nginx:1.25-alpine      Up 3 hours                      
+  ◑   日本語コンテナ     redis:7                Paused                          
+  ◇   this-is-a-delibe…  ghcr.io/example/some…  Created                         
+  ○   worker-🚀-emoji    python:3.12-slim       Exited (0) 5 minutes ago        
+  ✕   zombie             busybox:latest         Dead                            
+
+────────────────────────────────────────────────────────────────────────────────
+ j/k nav · enter details · / filter · : commands · s start/stop · D events ·    
+ space select · ? help · q quit                                                 
+
+
+
+
+
+
+
+
+
+
+
+
