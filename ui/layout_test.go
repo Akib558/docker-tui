@@ -105,7 +105,8 @@ func TestListFrameReservesScrollChrome(t *testing.T) {
 			ID: string(rune('a' + i)), Name: "c", State: "running",
 		})
 	}
-	frame := m.listFrame(30)
+	s := ListScreen{State: ScreenReady}
+	frame := newFrame(m.width, m.height, screenChrome(s, m.hasActiveNotification()))
 	if frame.BodyRows >= m.height {
 		t.Fatalf("body rows %d should be less than height %d", frame.BodyRows, m.height)
 	}

@@ -13,78 +13,61 @@ import (
 // ═══════════════════════════════════════════════════════════════════════
 
 func (m Model) viewList() string {
-	var b strings.Builder
-	w := m.width
 	filtered := m.filteredContainers()
+	cols := FitColumns(m.listColumnSpecs(), TableW(m.width))
 
-	b.WriteString(m.renderHeader(w))
-
-	if m.err != nil && len(m.containers) == 0 {
-		boxW := min(w-4, 70)
-		errBox := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorDanger).
-			Foreground(colorDanger).
-			Padding(1, 2).Width(boxW).
-			Render(fmt.Sprintf("Cannot connect to Docker:\n\n%v\n\nMake sure Docker is running.", m.err))
-		b.WriteString(lipgloss.PlaceHorizontal(w, lipgloss.Center, errBox) + "\n\n")
-		b.WriteString(m.helpCentered(w))
-		return b.String()
+	s := ListScreen{
+		Title:    "Containers",
+		Count:    len(m.containers),
+		Selected: len(m.selected),
+		Cols:     cols,
+		Cursor:   m.cursor,
+		State:    ScreenReady,
+		Help:     m.listHelpKeys(),
+	}
+	// Same reasoning as the volumes/networks migrations: renderHeader
+	// already shows a live typing box while m.filtering is true, so only
+	// show the scaffold's own filter bar once filtering is no longer
+	// active.
+	if !m.filtering {
+		s.Filter = m.filterText
 	}
 
 	dash := m.dashboardCache
-	if dash == "" || m.dashboardCacheW != w {
-		dash = m.renderDashboard(w)
+	if dash == "" || m.dashboardCacheW != m.width {
+		dash = m.renderDashboard(m.width)
 	}
-	b.WriteString(dash + "\n")
-
+	s.Extra = append(s.Extra, dash)
 	if m.cfg != nil && !m.cfg.HintDismissed {
-		b.WriteString(m.renderGettingStartedHint(w) + "\n")
+		s.Extra = append(s.Extra, m.renderGettingStartedHint(m.width))
 	}
 
-	if len(m.containers) == 0 {
-		empty := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("No containers found. Start some containers and press 'r' to refresh.")
-		b.WriteString("\n" + lipgloss.PlaceHorizontal(w, lipgloss.Center, empty) + "\n\n")
-		b.WriteString(m.helpCentered(w))
-		return b.String()
-	}
-	if len(filtered) == 0 {
-		msg := "No containers match the current filter."
+	switch {
+	case m.err != nil && len(m.containers) == 0:
+		s.State = ScreenError
+		s.Message = fmt.Sprintf("Cannot connect to Docker:\n\n%v\n\nMake sure Docker is running.", m.err)
+		return m.renderListScreen(s)
+	case len(m.containers) == 0:
+		s.State = ScreenEmpty
+		s.Message = "No containers found. Start some containers and press 'r' to refresh."
+		return m.renderListScreen(s)
+	case len(filtered) == 0:
+		s.State = ScreenNoMatch
+		s.Message = "No containers match the current filter."
 		if m.filterText != "" {
-			msg = fmt.Sprintf("No containers match filter %q.", m.filterText)
+			s.Message = fmt.Sprintf("No containers match filter %q.", m.filterText)
 		}
-		empty := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(msg)
-		b.WriteString("\n" + lipgloss.PlaceHorizontal(w, lipgloss.Center, empty) + "\n\n")
-		b.WriteString(m.helpCentered(w))
-		return b.String()
+		return m.renderListScreen(s)
 	}
 
-	cols := m.calcColumns()
-	b.WriteString(m.renderTableHeader(cols) + "\n")
-
-	frame := m.listFrame(len(filtered))
-	visibleRows := frame.BodyRows
-
-	startIdx := 0
-	if m.cursor >= visibleRows {
-		startIdx = m.cursor - visibleRows + 1
+	s.Rows = make([]ListTableRow, 0, len(filtered))
+	for _, ct := range filtered {
+		s.Rows = append(s.Rows, ListTableRow{
+			Cells:    m.listRowCells(ct, cols),
+			Selected: m.selected[ct.ID],
+		})
 	}
-	endIdx := min(startIdx+visibleRows, len(filtered))
-
-	for i := startIdx; i < endIdx; i++ {
-		b.WriteString(m.renderTableRow(filtered[i], i == m.cursor, cols, i) + "\n")
-	}
-
-	if len(filtered) > visibleRows {
-		pct := float64(m.cursor) / float64(max(len(filtered)-1, 1)) * 100
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).
-			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.cursor+1, len(filtered), pct)) + "\n")
-	}
-
-	b.WriteString(m.renderNotification())
-	b.WriteString("\n" + m.helpCentered(w))
-	return b.String()
+	return m.renderListScreen(s)
 }
 
 // ── Header bar ──────────────────────────────────────────────────────────
@@ -186,152 +169,79 @@ func (m Model) renderFilterBar(text string) string {
 
 // ── Responsive columns ──────────────────────────────────────────────────
 
-type columns struct {
-	state, name, image, cpu, mem, status, ports, id, netio, blockio int
-	showCPU, showMem, showPorts, showID, showNetIO, showBlockIO     bool
+// listColumnSpecs declares the container table's columns. FitColumns drops
+// them highest-Priority-first as the terminal narrows, which replaces the old
+// hand-written width ladder.
+func (m Model) listColumnSpecs() []ColumnSpec {
+	return []ColumnSpec{
+		{Label: "", Width: 3},
+		// NAME and STATUS both stay at Priority 0 (never drop) to match the
+		// pre-migration width ladder, which showed these two — alongside the
+		// state icon — at every width down to the narrowest tier, never
+		// hiding either one.
+		{Label: "NAME", Percent: 22, Min: 10},
+		{Label: "IMAGE", Percent: 22, Min: 10, Priority: 4},
+		{Label: "CPU %", Width: 12, Priority: 5},
+		{Label: "MEM %", Width: 12, Priority: 5},
+		{Label: "STATUS", Percent: 20, Min: 8},
+		{Label: "PORTS", Percent: 16, Min: 8, Priority: 6},
+		{Label: "CONTAINER ID", Width: 14, Priority: 7},
+		{Label: "NET I/O", Width: 16, Priority: 8},
+		{Label: "BLOCK I/O", Width: 16, Priority: 8},
+	}
 }
 
-func (m Model) calcColumns() columns {
-	w := TableW(m.width)
-	c := columns{state: 3}
-
-	switch {
-	case w < 55:
-		c.name = max(w*45/100, 10)
-		c.status = w - c.state - c.name
-	case w < 80:
-		c.name = w * 25 / 100
-		c.image = w * 30 / 100
-		c.status = w - c.state - c.name - c.image
-	case w < 110:
-		c.showCPU = true
-		c.showMem = true
-		c.name = w * 20 / 100
-		c.image = w * 22 / 100
-		c.cpu = max(w*13/100, 12)
-		c.mem = max(w*13/100, 12)
-		c.status = w - c.state - c.name - c.image - c.cpu - c.mem
-	case w < 150:
-		c.showCPU = true
-		c.showMem = true
-		c.showPorts = true
-		c.name = w * 18 / 100
-		c.image = w * 20 / 100
-		c.cpu = max(w*12/100, 12)
-		c.mem = max(w*12/100, 12)
-		c.status = w * 16 / 100
-		c.ports = w - c.state - c.name - c.image - c.cpu - c.mem - c.status
-	default:
-		c.showCPU = true
-		c.showMem = true
-		c.showPorts = true
-		c.showID = true
-		c.name = w * 15 / 100
-		c.image = w * 17 / 100
-		c.cpu = max(w*10/100, 12)
-		c.mem = max(w*10/100, 12)
-		c.status = w * 14 / 100
-		c.ports = w * 12 / 100
-		c.id = w - c.state - c.name - c.image - c.cpu - c.mem - c.status - c.ports
+func (m Model) listRowCells(ct docker.ContainerInfo, cols []ListColumn) []Cell {
+	cells := make([]Cell, 0, len(cols))
+	for _, c := range cols {
+		switch c.Label {
+		case "":
+			icon := stateGlyph(ct.State)
+			if ct.Health != "" {
+				icon += healthGlyphPlain(ct.Health)
+			}
+			cells = append(cells, Cell{Text: glyphPad(icon, c.Width), Width: c.Width, FG: stateFGColor(ct.State)})
+		case "NAME":
+			cells = append(cells, Cell{Text: truncate(ct.Name, c.Width), Width: c.Width, FG: colorText})
+		case "IMAGE":
+			cells = append(cells, Cell{Text: truncate(ct.Image, c.Width), Width: c.Width, FG: colorSubtext})
+		case "CPU %":
+			cells = append(cells, m.statCell(ct.ID, c.Width, func(s *docker.ContainerResourceStats) float64 { return s.CPUPercent }))
+		case "MEM %":
+			cells = append(cells, m.statCell(ct.ID, c.Width, func(s *docker.ContainerResourceStats) float64 { return s.MemPercent }))
+		case "STATUS":
+			cells = append(cells, Cell{Text: truncate(ct.Status, c.Width), Width: c.Width, FG: colorSubtext})
+		case "PORTS":
+			cells = append(cells, Cell{Text: truncate(formatPortsSummary(ct.Ports), c.Width), Width: c.Width, FG: colorSecondary})
+		case "CONTAINER ID":
+			cells = append(cells, Cell{Text: truncate(ct.ID, c.Width), Width: c.Width, FG: colorDim})
+		case "NET I/O":
+			cells = append(cells, m.ioCell(ct.ID, c.Width, func(s *docker.ContainerResourceStats) string {
+				return formatBytes(s.NetRx) + "/" + formatBytes(s.NetTx)
+			}))
+		case "BLOCK I/O":
+			cells = append(cells, m.ioCell(ct.ID, c.Width, func(s *docker.ContainerResourceStats) string {
+				return formatBytes(s.BlockRead) + "/" + formatBytes(s.BlockWrite)
+			}))
+		}
 	}
-	return c
+	return cells
 }
 
-func (m Model) renderTableHeader(c columns) string {
-	cells := []Cell{
-		{Text: "", Width: c.state},
-		{Text: "NAME", Width: c.name, FG: colorMuted, Bold: true},
+// statCell renders a stat as a bar, or a placeholder when stats have not
+// arrived for this container yet.
+func (m Model) statCell(id string, width int, pick func(*docker.ContainerResourceStats) float64) Cell {
+	if s, ok := m.stats[id]; ok {
+		return Cell{Width: width, Bar: true, BarPercent: pick(s)}
 	}
-	if c.image > 0 {
-		cells = append(cells, Cell{Text: "IMAGE", Width: c.image, FG: colorMuted, Bold: true})
-	}
-	if c.showCPU {
-		cells = append(cells, Cell{Text: "CPU %", Width: c.cpu, FG: colorMuted, Bold: true})
-	}
-	if c.showMem {
-		cells = append(cells, Cell{Text: "MEM %", Width: c.mem, FG: colorMuted, Bold: true})
-	}
-	cells = append(cells, Cell{Text: "STATUS", Width: c.status, FG: colorMuted, Bold: true})
-	if c.showPorts {
-		cells = append(cells, Cell{Text: "PORTS", Width: c.ports, FG: colorMuted, Bold: true})
-	}
-	if c.showID {
-		cells = append(cells, Cell{Text: "CONTAINER ID", Width: c.id, FG: colorMuted, Bold: true})
-	}
-	if c.showNetIO {
-		cells = append(cells, Cell{Text: "NET I/O", Width: c.netio, FG: colorMuted, Bold: true})
-	}
-	if c.showBlockIO {
-		cells = append(cells, Cell{Text: "BLOCK I/O", Width: c.blockio, FG: colorMuted, Bold: true})
-	}
-	row := RenderRow(m.width, cells, RowStyle{Marker: " "})
-	return listHeaderStyle.Width(m.width).Render(row)
+	return Cell{Width: width, Text: "···", FG: colorDim}
 }
 
-func (m Model) renderTableRow(ct docker.ContainerInfo, isCursor bool, c columns, rowIdx int) string {
-	icon := stateIcon(ct.State)
-	var stateText string
-	if ct.Health != "" {
-		stateText = glyphPad(icon+healthIconPlain(ct.Health), c.state)
-	} else {
-		stateText = glyphPad(icon, c.state)
+// ioCell renders an I/O pair, or "-" when stats have not arrived yet.
+func (m Model) ioCell(id string, width int, pick func(*docker.ContainerResourceStats) string) Cell {
+	text := "-"
+	if s, ok := m.stats[id]; ok {
+		text = pick(s)
 	}
-
-	cells := []Cell{
-		{Text: stateText, Width: c.state, FG: stateFGColor(ct.State)},
-		{Text: truncate(ct.Name, c.name), Width: c.name, FG: colorText},
-	}
-	if c.image > 0 {
-		cells = append(cells, Cell{Text: truncate(ct.Image, c.image), Width: c.image, FG: colorSubtext})
-	}
-	if c.showCPU {
-		cell := Cell{Width: c.cpu, FG: colorDim, Text: "···"}
-		if s, ok := m.stats[ct.ID]; ok {
-			cell = Cell{Width: c.cpu, Bar: true, BarPercent: s.CPUPercent}
-		}
-		cells = append(cells, cell)
-	}
-	if c.showMem {
-		cell := Cell{Width: c.mem, FG: colorDim, Text: "···"}
-		if s, ok := m.stats[ct.ID]; ok {
-			cell = Cell{Width: c.mem, Bar: true, BarPercent: s.MemPercent}
-		}
-		cells = append(cells, cell)
-	}
-	cells = append(cells, Cell{Text: truncate(ct.Status, c.status), Width: c.status, FG: colorSubtext})
-	if c.showPorts {
-		p := formatPortsSummary(ct.Ports)
-		cells = append(cells, Cell{Text: truncate(p, c.ports), Width: c.ports, FG: colorSecondary})
-	}
-	if c.showID {
-		cells = append(cells, Cell{Text: truncate(ct.ID, c.id), Width: c.id, FG: colorDim})
-	}
-	if c.showNetIO {
-		netStr := "-"
-		if s, ok := m.stats[ct.ID]; ok {
-			netStr = formatBytes(s.NetRx) + "/" + formatBytes(s.NetTx)
-		}
-		cells = append(cells, Cell{Text: truncate(netStr, c.netio), Width: c.netio, FG: colorSubtext})
-	}
-	if c.showBlockIO {
-		blockStr := "-"
-		if s, ok := m.stats[ct.ID]; ok {
-			blockStr = formatBytes(s.BlockRead) + "/" + formatBytes(s.BlockWrite)
-		}
-		cells = append(cells, Cell{Text: truncate(blockStr, c.blockio), Width: c.blockio, FG: colorSubtext})
-	}
-
-	isMultiSel := m.selected[ct.ID]
-	var kind ListRowKind
-	switch {
-	case isCursor && isMultiSel:
-		kind = ListRowCursorSelected
-	case isCursor:
-		kind = ListRowCursor
-	case isMultiSel:
-		kind = ListRowSelected
-	default:
-		kind = ListRowNormal
-	}
-	return renderRowFromKind(m.width, kind, rowIdx, cells)
+	return Cell{Text: truncate(text, width), Width: width, FG: colorSubtext}
 }

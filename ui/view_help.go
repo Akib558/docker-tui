@@ -23,7 +23,7 @@ func (m Model) renderGettingStartedHint(w int) string {
 	return clampRenderedWidth(line, w)
 }
 
-func (m Model) helpCentered(w int) string {
+func (m Model) listHelpKeys() string {
 	var keys []struct{ key, desc string }
 	if m.filtering {
 		keys = []struct{ key, desc string }{
@@ -54,7 +54,7 @@ func (m Model) helpCentered(w int) string {
 			{"q", "quit"},
 		}
 	}
-	return renderHelpBar(w, fmtKeys(keys))
+	return fmtKeys(keys)
 }
 
 func (m Model) centralLogsHelp(w int) string {

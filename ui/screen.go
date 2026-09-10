@@ -44,7 +44,9 @@ func screenChrome(s ListScreen, hasToast bool) int {
 	// fact so a future fix to that bug has a clear place to also update.
 	chrome++ // title
 	chrome++ // blank line under the title
-	chrome += len(s.Extra)
+	for _, e := range s.Extra {
+		chrome += strings.Count(e, "\n") + 1
+	}
 	if s.Filter != "" {
 		chrome++
 	}

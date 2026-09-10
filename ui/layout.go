@@ -86,33 +86,6 @@ func renderHelpBar(width int, keys string) string {
 
 // ── Per-view chrome (lines above + below scroll region, excluding data rows) ──
 
-func (m Model) listChrome(filteredCount int) int {
-	if len(m.containers) == 0 {
-		return 3 // header(2) + help(1)
-	}
-	chrome := 2 + m.dashboardHeight(m.width) + 1 + 1 + 2 // header, dash+nl, table hdr, gap+help
-	if filteredCount > m.listBodyRowsEstimate(chrome, 0) {
-		chrome++ // scroll indicator
-	}
-	if m.hasActiveNotification() {
-		chrome++
-	}
-	return chrome
-}
-
-func (m Model) listBodyRowsEstimate(baseChrome, scroll int) int {
-	notify := 0
-	if m.hasActiveNotification() {
-		notify = 1
-	}
-	return bodyRows(m.height, baseChrome+scroll+notify)
-}
-
-func (m Model) listFrame(filteredCount int) Frame {
-	chrome := m.listChrome(filteredCount)
-	return newFrame(m.width, m.height, chrome)
-}
-
 func (m Model) centralLogsFrame() Frame {
 	chrome := 5 // header(2) + title(1) + gap+help(2)
 	if m.centralLogFiltering {

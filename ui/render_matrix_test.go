@@ -54,9 +54,9 @@ func TestTableHeaderAlignsWithRow(t *testing.T) {
 	m.containers = []docker.ContainerInfo{{
 		ID: "abc", Name: "web", Image: "nginx", State: "running", Status: "Up",
 	}}
-	cols := m.calcColumns()
-	header := m.renderTableHeader(cols)
-	row := m.renderTableRow(m.containers[0], false, cols, 0)
+	cols := FitColumns(m.listColumnSpecs(), TableW(m.width))
+	header := m.renderScreenTableHeader(ListScreen{Cols: cols})
+	row := renderRowFromKind(m.width, ListRowNormal, 0, m.listRowCells(m.containers[0], cols))
 	if lipgloss.Width(row) != m.width {
 		t.Fatalf("row width = %d, want %d", lipgloss.Width(row), m.width)
 	}
