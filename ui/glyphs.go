@@ -27,6 +27,8 @@ const (
 	glyphBarEmpty     = "░"
 )
 
+var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
 func stateGlyph(state string) string {
 	switch state {
 	case "running":

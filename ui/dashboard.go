@@ -17,16 +17,6 @@ func (m Model) renderDashboard(w int) string {
 	return m.renderStatusStrip(w)
 }
 
-func (m Model) dashboardHeight(w int) int {
-	if len(m.containers) == 0 {
-		return 0
-	}
-	if w < 80 {
-		return 1
-	}
-	return 2
-}
-
 func (m Model) containerStateSummary() []struct {
 	state string
 	label string
@@ -159,7 +149,7 @@ func (m Model) renderRefreshMeta() string {
 	if !m.lastRefresh.IsZero() {
 		age := since(m.lastRefresh).Round(time.Second)
 		parts = append(parts, lipgloss.NewStyle().Foreground(colorDim).Render(
-			fmt.Sprintf("⟳ %s ago", formatUptime(age))))
+			fmt.Sprintf(glyphRefresh+" %s ago", formatUptime(age))))
 	}
 	if m.refreshInterval > 0 {
 		parts = append(parts, lipgloss.NewStyle().Foreground(colorDim).Render(

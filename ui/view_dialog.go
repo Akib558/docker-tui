@@ -34,7 +34,7 @@ func (m Model) renderDialogOverlay() string {
 }
 
 func (m Model) renderConfirmDialog() string {
-	title := dialogTitleStyle.Render("⚠  Confirm Action")
+	title := dialogTitleStyle.Render(glyphWarn + "  Confirm Action")
 	msg := lipgloss.NewStyle().Foreground(colorText).Render(m.confirmMsg)
 	btns := "\n" + helpKeyStyle.Render("y") + " " + helpDescStyle.Render("confirm") +
 		"  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  " +
@@ -67,7 +67,7 @@ func (m Model) renderThemeDialog() string {
 func (m Model) renderInputDialog() string {
 	title := dialogTitleStyle.Render(m.inputPrompt)
 	inputW := min(44, m.width-16)
-	cursor := lipgloss.NewStyle().Foreground(colorPrimary).Render("█")
+	cursor := lipgloss.NewStyle().Foreground(colorPrimary).Render(glyphBarFill)
 	input := inputStyle.Width(inputW).Render(m.inputText + cursor)
 	help := "\n" + helpKeyStyle.Render("enter") + " " + helpDescStyle.Render("submit") +
 		"  " + lipgloss.NewStyle().Foreground(colorDim).Render("|") + "  " +
@@ -223,7 +223,7 @@ func (m Model) renderCommandPaletteDialog() string {
 
 	// Input field
 	inputW := min(50, m.width-16)
-	cursor := lipgloss.NewStyle().Foreground(colorPrimary).Render("█")
+	cursor := lipgloss.NewStyle().Foreground(colorPrimary).Render(glyphBarFill)
 	input := inputStyle.Width(inputW).Render(">" + m.commandPaletteText + cursor)
 
 	// Results

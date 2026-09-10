@@ -8,8 +8,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
-
 func sparkline(data []float64, width int, maxVal float64) string {
 	if width <= 0 {
 		return ""

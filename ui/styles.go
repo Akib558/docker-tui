@@ -151,5 +151,3 @@ func stateStyle(state string) lipgloss.Style {
 		return statusOther
 	}
 }
-
-func stateIcon(state string) string { return stateGlyph(state) }

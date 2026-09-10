@@ -42,7 +42,7 @@ func renderRestartKV(key string, count int) string {
 	default:
 		style = lipgloss.NewStyle().Foreground(colorText)
 	}
-	icons := strings.Repeat("↻", min(count, 5))
+	icons := strings.Repeat(glyphStateRestart, min(count, 5))
 	return "  " + detailLabelStyle.Render(key) + " " + style.Render(icons+" "+fmt.Sprintf("%d", count)) + "\n"
 }
 

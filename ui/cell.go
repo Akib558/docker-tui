@@ -263,8 +263,6 @@ func stateFGColor(state string) lipgloss.Color {
 	}
 }
 
-func healthIconPlain(health string) string { return healthGlyphPlain(health) }
-
 func renderRowFromKind(termW int, kind ListRowKind, rowIdx int, cells []Cell) string {
 	return RenderRow(termW, cells, rowStyleFromKind(kind, rowIdx))
 }

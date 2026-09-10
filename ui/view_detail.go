@@ -386,7 +386,7 @@ func (m Model) renderLogsTab(width int) string {
 	var b strings.Builder
 	liveIndicator := ""
 	if m.liveLogging {
-		liveIndicator = " " + lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render("● LIVE")
+		liveIndicator = " " + lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).Render(glyphStateRunning+" LIVE")
 	}
 	mode := "FOLLOW"
 	if !m.logViewer.Follow {

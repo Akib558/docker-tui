@@ -108,7 +108,7 @@ func (m Model) renderHeader(w int) string {
 	} else if m.netFiltering && m.view == viewNetworks {
 		center = m.renderFilterBar(m.netFilterText)
 	} else if len(m.selected) > 0 {
-		center = selectedMarkStyle.Render(fmt.Sprintf("◈ %d selected", len(m.selected)))
+		center = selectedMarkStyle.Render(fmt.Sprintf(glyphMarkerSelect+" %d selected", len(m.selected)))
 	} else if m.overview != nil {
 		dot := lipgloss.NewStyle().Foreground(colorDim).Render(" · ")
 		parts := []string{
@@ -117,7 +117,7 @@ func (m Model) renderHeader(w int) string {
 		}
 		if m.sortMode != sortName {
 			sortNames := []string{"name", "state", "cpu", "mem", "image"}
-			sortLabel := lipgloss.NewStyle().Foreground(colorSecondary).Render("↕ " + sortNames[m.sortMode])
+			sortLabel := lipgloss.NewStyle().Foreground(colorSecondary).Render(glyphScroll + " " + sortNames[m.sortMode])
 			parts = append(parts, sortLabel)
 		}
 		center = strings.Join(parts, dot)
@@ -162,7 +162,7 @@ func (m Model) renderFilterBar(text string) string {
 	searchIcon := lipgloss.NewStyle().Foreground(colorWarning).Render(glyphSearch + " ")
 	filterContent := lipgloss.NewStyle().Foreground(colorWarning).Bold(true).Render(filterText)
 	if text != "" {
-		filterContent += lipgloss.NewStyle().Foreground(colorWarning).Render("█")
+		filterContent += lipgloss.NewStyle().Foreground(colorWarning).Render(glyphBarFill)
 	}
 	return filterBarStyle.Render(searchIcon + filterContent)
 }

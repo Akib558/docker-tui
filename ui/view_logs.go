@@ -250,7 +250,7 @@ func (m Model) viewCentralLogs() string {
 		if m.centralLogRegex {
 			text += " (regex)"
 		}
-		filter = "  " + filterBarStyle.Render("⌕ "+text) + "\n"
+		filter = "  " + filterBarStyle.Render(glyphSearch+" "+text) + "\n"
 	}
 
 	mode := "FOLLOW"
