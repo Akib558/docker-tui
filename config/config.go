@@ -31,7 +31,7 @@ var Themes = []Theme{
 	{
 		Name: "dark-green", Primary: "#00E676", Secondary: "#69F0AE",
 		Success: "#00E676", Danger: "#FF5252", Warning: "#FFD740",
-		Muted: "#4E6E5D", Text: "#E8F5E9", Subtext: "#A5D6A7",
+		Muted: "#5A7A69", Text: "#E8F5E9", Subtext: "#A5D6A7",
 		BgAlt: "#0D2818", BgSelected: "#1B5E20", Border: "#2E7D32",
 		Dim: "#5C8A62", Cyan: "#00BCD4", TitleFg: "#0A0F0D",
 	},
@@ -45,7 +45,7 @@ var Themes = []Theme{
 	{
 		Name: "nord", Primary: "#88C0D0", Secondary: "#81A1C1",
 		Success: "#A3BE8C", Danger: "#BF616A", Warning: "#EBCB8B",
-		Muted: "#4C566A", Text: "#ECEFF4", Subtext: "#D8DEE9",
+		Muted: "#586276", Text: "#ECEFF4", Subtext: "#D8DEE9",
 		BgAlt: "#2E3440", BgSelected: "#3B4252", Border: "#4C566A",
 		Dim: "#7B879C", Cyan: "#8FBCBB", TitleFg: "#2E3440",
 	},
@@ -80,7 +80,7 @@ var Themes = []Theme{
 	{
 		Name: "rose-pine", Primary: "#C4A7E7", Secondary: "#9CCFD8",
 		Success: "#31748F", Danger: "#EB6F92", Warning: "#F6C177",
-		Muted: "#403D52", Text: "#E0DEF4", Subtext: "#908CAA",
+		Muted: "#48455A", Text: "#E0DEF4", Subtext: "#908CAA",
 		BgAlt: "#1F1D2E", BgSelected: "#26233A", Border: "#403D52",
 		Dim: "#7B7391", Cyan: "#9CCFD8", TitleFg: "#191724",
 	},
@@ -94,7 +94,7 @@ var Themes = []Theme{
 	{
 		Name: "monokai", Primary: "#A6E22E", Secondary: "#66D9E8",
 		Success: "#A6E22E", Danger: "#F92672", Warning: "#E6DB74",
-		Muted: "#49483E", Text: "#F8F8F2", Subtext: "#75715E",
+		Muted: "#5D5C52", Text: "#F8F8F2", Subtext: "#75715E",
 		BgAlt: "#1E1F1C", BgSelected: "#3E3D32", Border: "#49483E",
 		Dim: "#8A8778", Cyan: "#66D9E8", TitleFg: "#272822",
 	},
