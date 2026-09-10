@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/akib558/docker-tui/config"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
@@ -30,6 +31,7 @@ type RowStyle struct {
 	BG       lipgloss.Color
 	Marker   string
 	MarkerFG lipgloss.Color
+	MinFG    lipgloss.Color // floor colour for cells too close to BG to read
 }
 
 func displayWidth(s string) int {
@@ -66,14 +68,18 @@ func prepareCellText(text string, width int) string {
 	return text
 }
 
-func cellStyle(cell Cell, rowBG lipgloss.Color) lipgloss.Style {
+func cellStyle(cell Cell, rowBG, minFG lipgloss.Color) lipgloss.Style {
 	style := lipgloss.NewStyle()
-	if cell.FG != "" {
-		style = style.Foreground(cell.FG)
-	}
 	bg := rowBG
 	if cell.BG != "" {
 		bg = cell.BG
+	}
+	fg := cell.FG
+	if fg != "" && bg != "" && minFG != "" && !readableOn(fg, bg) {
+		fg = minFG
+	}
+	if fg != "" {
+		style = style.Foreground(fg)
 	}
 	if bg != "" {
 		style = style.Background(bg)
@@ -84,10 +90,19 @@ func cellStyle(cell Cell, rowBG lipgloss.Color) lipgloss.Style {
 	return style
 }
 
+// readableOn reports whether fg is distinguishable from bg.
+func readableOn(fg, bg lipgloss.Color) bool {
+	ratio, ok := config.ContrastRatio(string(fg), string(bg))
+	if !ok {
+		return true // non-hex colours (named/ANSI) are left alone
+	}
+	return ratio >= 1.6
+}
+
 func renderBarSegments(percent float64, width int, rowBG lipgloss.Color) string {
 	if width <= 5 {
 		text := fmt.Sprintf("%3.0f%%", percent)
-		return cellStyle(Cell{FG: colorSubtext}, rowBG).Render(text)
+		return cellStyle(Cell{FG: colorSubtext}, rowBG, "").Render(text)
 	}
 	barWidth := width - 5
 	if barWidth < 2 {
@@ -114,8 +129,11 @@ func renderBarSegments(percent float64, width int, rowBG lipgloss.Color) string 
 	emptyStyle := lipgloss.NewStyle().Foreground(colorBarTrack)
 	pctStyle := lipgloss.NewStyle().Foreground(colorSubtext)
 	if rowBG != "" {
-		fillStyle = fillStyle.Background(rowBG)
+		if !readableOn(colorBarTrack, rowBG) {
+			emptyStyle = emptyStyle.Foreground(colorSubtext)
+		}
 		emptyStyle = emptyStyle.Background(rowBG)
+		fillStyle = fillStyle.Background(rowBG)
 		pctStyle = pctStyle.Background(rowBG)
 	}
 
@@ -136,6 +154,19 @@ func RenderRow(totalWidth int, cells []Cell, rs RowStyle) string {
 	cells = fitCells(totalWidth, cells)
 	bg := rs.BG
 
+	// Every column, including separators and padding, is emitted through a
+	// style carrying the row background. A raw string here is a hole.
+	pad := func(n int) string {
+		if n < 1 {
+			return ""
+		}
+		s := lipgloss.NewStyle()
+		if bg != "" {
+			s = s.Background(bg)
+		}
+		return s.Render(strings.Repeat(" ", n))
+	}
+
 	marker := rs.Marker
 	if marker == "" {
 		marker = " "
@@ -147,33 +178,23 @@ func RenderRow(totalWidth int, cells []Cell, rs RowStyle) string {
 	if bg != "" {
 		markerStyle = markerStyle.Background(bg)
 	}
-	line := markerStyle.Render(glyphPad(marker, 1)) + " "
+
+	line := markerStyle.Render(glyphPad(marker, 1)) + pad(1)
 
 	for i, cell := range cells {
 		var part string
 		if cell.Bar && cell.Width > 0 {
 			part = renderBarSegments(cell.BarPercent, cell.Width, bg)
 		} else {
-			text := prepareCellText(cell.Text, cell.Width)
-			part = cellStyle(cell, bg).Render(text)
+			part = cellStyle(cell, bg, rs.MinFG).Render(prepareCellText(cell.Text, cell.Width))
 		}
 		line += part
 		if i < len(cells)-1 {
-			spaceStyle := lipgloss.NewStyle()
-			if bg != "" {
-				spaceStyle = spaceStyle.Background(bg)
-			}
-			line += spaceStyle.Render(" ")
+			line += pad(1)
 		}
 	}
 
-	if pad := totalWidth - lipgloss.Width(line); pad > 0 {
-		padStyle := lipgloss.NewStyle()
-		if bg != "" {
-			padStyle = padStyle.Background(bg)
-		}
-		line += padStyle.Render(strings.Repeat(" ", pad))
-	}
+	line += pad(totalWidth - lipgloss.Width(line))
 	if lipgloss.Width(line) > totalWidth {
 		line = clampRenderedWidth(line, totalWidth)
 	}
@@ -193,15 +214,16 @@ func clampRenderedWidth(s string, maxW int) string {
 func rowStyleFromKind(kind ListRowKind, rowIdx int) RowStyle {
 	switch kind {
 	case ListRowCursor:
-		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerCursor, MarkerFG: colorPrimary}
+		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerCursor, MarkerFG: colorPrimary, MinFG: colorSubtext}
 	case ListRowSelected:
-		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerSelect, MarkerFG: colorWarning}
+		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerSelect, MarkerFG: colorWarning, MinFG: colorSubtext}
 	case ListRowCursorSelected:
-		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerBoth, MarkerFG: colorPrimary}
+		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerBoth, MarkerFG: colorPrimary, MinFG: colorSubtext}
 	default:
 		rs := RowStyle{Marker: " "}
 		if rowIdx%2 == 1 {
 			rs.BG = colorBgAlt
+			rs.MinFG = colorSubtext
 		}
 		return rs
 	}

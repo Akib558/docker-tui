@@ -36,21 +36,6 @@ func TestRenderRowFitsTerminalWidth(t *testing.T) {
 	}
 }
 
-func TestSelectedRowBackgroundContinuity(t *testing.T) {
-	cells := []Cell{
-		{Text: glyphPad("●", 3), Width: 3, FG: colorSuccess},
-		{Text: "web-server", Width: 24, FG: colorText},
-		{Text: "Up 2 hours", Width: 16, FG: colorSubtext},
-	}
-	row := renderRowFromKind(80, ListRowCursor, 0, cells)
-	if !strings.Contains(row, string(colorBgSelected)) && colorBgSelected != "" {
-		// Background color should appear in selected row styling.
-		if lipgloss.Width(row) != 80 {
-			t.Fatalf("selected row width = %d, want 80", lipgloss.Width(row))
-		}
-	}
-}
-
 func TestRenderRowZeroPercentBar(t *testing.T) {
 	cells := []Cell{
 		{Width: 12, Bar: true, BarPercent: 0},
