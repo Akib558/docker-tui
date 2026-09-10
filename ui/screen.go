@@ -38,7 +38,10 @@ type ListScreen struct {
 // screenChrome counts the non-row lines a screen draws, so BodyRows can be
 // derived rather than guessed.
 func screenChrome(s ListScreen, hasToast bool) int {
-	chrome := 2 // app header
+	chrome := 3 // app header — renderHeader (ui/view_list.go) renders 3 lines, not the 2
+	            // its own code intends: a pre-existing width/padding wrap bug, out of scope
+	            // for this plan (no task touches renderHeader). Accounted for here as a known
+	            // fact so a future fix to that bug has a clear place to also update.
 	chrome++    // title
 	chrome++    // blank line under the title
 	chrome += len(s.Extra)
@@ -51,7 +54,9 @@ func screenChrome(s ListScreen, hasToast bool) int {
 	if hasToast {
 		chrome++
 	}
-	chrome += 3 // help bar top border + help bar content + preceding blank line
+	chrome += 2 // help bar: its BorderTop rule plus its content line. There is no blank
+	            // line before it — renderNotification returns "" (zero bytes) when there's
+	            // no active toast, and nothing else writes one here.
 	return chrome
 }
 
