@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -112,5 +113,32 @@ func TestRenderListScreenSelectionCountInTitle(t *testing.T) {
 	}
 	if !strings.Contains(out, glyphMarkerSelect) {
 		t.Fatalf("title should use the registry glyph %q", glyphMarkerSelect)
+	}
+}
+
+func TestRenderListScreenScrollIndicatorReservesItsOwnLine(t *testing.T) {
+	withFixedNow(t, fixedNow)
+	m := Model{width: 80, height: 24, cfg: fixtureConfig()}
+	s := sampleScreen()
+
+	// Enough rows that the body can't show them all at this height, forcing
+	// the two-pass chrome calculation's scroll-indicator branch.
+	var rows []ListTableRow
+	for i := 0; i < 50; i++ {
+		rows = append(rows, ListTableRow{Cells: []Cell{
+			{Text: fmt.Sprintf("vol-%d", i), Width: s.Cols[0].Width},
+			{Text: "local", Width: s.Cols[1].Width},
+		}})
+	}
+	s.Rows = rows
+	s.Count = len(rows)
+
+	out := m.renderListScreen(s)
+	lines := strings.Split(out, "\n")
+	if len(lines) > m.height {
+		t.Fatalf("rendered %d lines, want <= %d (height) — the scroll indicator's own line must be reserved in advance, not pushed past the terminal height", len(lines), m.height)
+	}
+	if !strings.Contains(stripANSI(out), glyphScroll) {
+		t.Fatal("scroll indicator should render when rows exceed the visible area")
 	}
 }

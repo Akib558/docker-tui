@@ -51,7 +51,7 @@ func screenChrome(s ListScreen, hasToast bool) int {
 	if hasToast {
 		chrome++
 	}
-	chrome += 2 // blank line + help bar
+	chrome += 3 // help bar top border + help bar content + preceding blank line
 	return chrome
 }
 
