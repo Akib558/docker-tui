@@ -13,6 +13,14 @@ type ColumnSpec struct {
 // FitColumns lays specs out into availW display columns, accounting for the
 // single-space gap the row renderer places between columns. Columns are
 // dropped highest-Priority-first when the remainder cannot honour every Min.
+//
+// Precondition: the combined width of every priority-0 (never-drop) column,
+// plus their gaps, should not exceed availW. If it does — e.g. a fixed-width
+// priority-0 column alongside a flexible priority-0 column, as in this
+// package's events-view caller — the returned total can exceed availW. This
+// only occurs at terminal widths far narrower than any real terminal
+// (observed threshold: termW < 16 for the events case), so it is documented
+// here rather than defended against.
 func FitColumns(specs []ColumnSpec, availW int) []ListColumn {
 	if availW < 1 || len(specs) == 0 {
 		return nil

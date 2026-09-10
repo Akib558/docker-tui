@@ -113,11 +113,6 @@ func (m Model) listFrame(filteredCount int) Frame {
 	return newFrame(m.width, m.height, chrome)
 }
 
-func (m Model) eventsFrame() Frame {
-	chrome := 7 // header(2) + title(2) + table hdr(1) + gap+help(2)
-	return newFrame(m.width, m.height, chrome)
-}
-
 func (m Model) centralLogsFrame() Frame {
 	chrome := 5 // header(2) + title(1) + gap+help(2)
 	if m.centralLogFiltering {

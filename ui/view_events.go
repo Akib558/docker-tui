@@ -1,83 +1,79 @@
 package ui
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
 func (m Model) viewEvents() string {
-	var b strings.Builder
-	w := m.width
-	b.WriteString(m.renderHeader(w))
-	b.WriteString(renderViewTitle("Events", len(m.events), 0))
+	cols := FitColumns([]ColumnSpec{
+		{Label: "TIME", Width: 9},
+		{Label: "TYPE", Width: 12, Priority: 2},
+		{Label: "ACTION", Width: 14, Priority: 1},
+		{Label: "ACTOR", Percent: 100, Min: 12},
+		{Label: "CONTAINER ID", Width: 12, Priority: 3},
+	}, TableW(m.width))
 
-	timeW := 9
-	typeW := 12
-	actionW := 14
-	actorW := max(w*22/100, 16)
-	idW := max(w-timeW-typeW-actionW-actorW-12, 10)
-
-	hdr := strings.Repeat(" ", markerCols) +
-		tableHeaderStyle.Width(timeW).Render("TIME") + "  " +
-		tableHeaderStyle.Width(typeW).Render("TYPE") + "  " +
-		tableHeaderStyle.Width(actionW).Render("ACTION") + "  " +
-		tableHeaderStyle.Width(actorW).Render("ACTOR") + "  " +
-		tableHeaderStyle.Width(idW).Render("CONTAINER ID")
-	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
-
+	s := ListScreen{
+		Title:  "Events",
+		Count:  len(m.events),
+		Cols:   cols,
+		Cursor: m.eventsCursor,
+		State:  ScreenReady,
+		Help:   m.eventsHelpKeys(),
+	}
 	if len(m.events) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("  Waiting for docker events...") + "\n")
-	} else {
-		frame := m.eventsFrame()
-		maxRows := frame.BodyRows
-		start := 0
-		if len(m.events) > maxRows {
-			start = len(m.events) - maxRows
-		}
-		for i := start; i < len(m.events); i++ {
-			ev := m.events[i]
-
-			typeFG := colorSubtext
-			switch ev.Type {
-			case "container":
-				typeFG = colorCyan
-			case "network":
-				typeFG = colorSecondary
-			case "volume":
-				typeFG = colorWarning
-			}
-
-			actionFG := colorSubtext
-			switch {
-			case ev.Action == "start" || ev.Action == "create" || ev.Action == "connect":
-				actionFG = colorSuccess
-			case ev.Action == "stop" || ev.Action == "die" || ev.Action == "destroy" || ev.Action == "kill":
-				actionFG = colorDanger
-			}
-
-			cells := []Cell{
-				{Text: ev.Time.Format("15:04:05"), Width: timeW, FG: colorMuted},
-				{Text: ev.Type, Width: typeW, FG: typeFG},
-				{Text: ev.Action, Width: actionW, FG: actionFG},
-				{Text: truncate(ev.Actor, actorW), Width: actorW, FG: colorText},
-				{Text: truncate(ev.ID, idW), Width: idW, FG: colorDim},
-			}
-			kind := ListRowNormal
-			if i == m.eventsCursor {
-				kind = ListRowCursor
-			}
-			b.WriteString(renderRowFromKind(w, kind, i, cells) + "\n")
-		}
+		s.State = ScreenEmpty
+		s.Message = "Waiting for Docker events... (start or stop a container to see activity)"
+		return m.renderListScreen(s)
 	}
 
-	keys := []struct{ key, desc string }{
-		{"j/k", "nav"},
-		{"c", "clear"},
-		{"?", "help"},
-		{"esc", "back"},
+	s.Rows = make([]ListTableRow, 0, len(m.events))
+	for _, ev := range m.events {
+		cells := []Cell{{Text: ev.Time.Format("15:04:05"), Width: cols[0].Width, FG: colorMuted}}
+		for i, c := range cols[1:] {
+			var text string
+			var fg lipgloss.Color
+			switch c.Label {
+			case "TYPE":
+				text, fg = ev.Type, eventTypeColor(ev.Type)
+			case "ACTION":
+				text, fg = ev.Action, eventActionColor(ev.Action)
+			case "ACTOR":
+				text, fg = ev.Actor, colorText
+			case "CONTAINER ID":
+				text, fg = ev.ID, colorDim
+			}
+			cells = append(cells, Cell{Text: truncate(text, cols[i+1].Width), Width: cols[i+1].Width, FG: fg})
+		}
+		s.Rows = append(s.Rows, ListTableRow{Cells: cells})
 	}
-	b.WriteString("\n" + renderHelpBar(w, fmtKeys(keys)))
-	return b.String()
+	return m.renderListScreen(s)
+}
+
+// eventTypeColor tints an event's TYPE column by which kind of Docker object
+// it concerns — the pre-migration inline categorization, unchanged.
+func eventTypeColor(t string) lipgloss.Color {
+	switch t {
+	case "container":
+		return colorCyan
+	case "network":
+		return colorSecondary
+	case "volume":
+		return colorWarning
+	default:
+		return colorSubtext
+	}
+}
+
+// eventActionColor tints an event's ACTION column by whether it started or
+// ended something — the pre-migration inline categorization, unchanged.
+func eventActionColor(action string) lipgloss.Color {
+	switch action {
+	case "start", "create", "connect":
+		return colorSuccess
+	case "stop", "die", "destroy", "kill":
+		return colorDanger
+	default:
+		return colorSubtext
+	}
 }

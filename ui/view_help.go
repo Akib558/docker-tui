@@ -149,6 +149,15 @@ func (m Model) notificationsHelpKeys() string {
 	})
 }
 
+func (m Model) eventsHelpKeys() string {
+	return fmtKeys([]struct{ key, desc string }{
+		{"j/k", "nav"},
+		{"c", "clear"},
+		{"?", "help"},
+		{"esc", "back"},
+	})
+}
+
 // ── Notification ─────────────────────────────────────────────────────────
 
 func (m Model) renderNotification() string {
