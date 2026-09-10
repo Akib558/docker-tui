@@ -64,3 +64,33 @@ func TestFitColumnsHonoursMinimums(t *testing.T) {
 		}
 	}
 }
+
+// neverDropSpecs mirrors the shape real call sites use where a panic was
+// observed: every column is Priority 0 (never-drop), mixing a fixed-width
+// column with a flexible one, as in the notifications view, the events
+// view, and the detail identity line.
+func neverDropSpecs() []ColumnSpec {
+	return []ColumnSpec{
+		{Label: "TIME", Width: 8},
+		{Label: "", Width: 1},
+		{Label: "MESSAGE", Percent: 100, Min: 20},
+	}
+}
+
+// TestFitColumnsNeverPanicsAtNonPositiveWidth is a regression test for a
+// panic at terminal widths 1-7: FitColumns used to return nil whenever
+// availW < 1 (and TableW(termW) is < 1 for termW <= 7), but every call site
+// indexes the result unconditionally (e.g. cols[0].Width). For a never-drop
+// spec slice, FitColumns must always return exactly one ListColumn per spec,
+// even at availW <= 0, and must not panic.
+func TestFitColumnsNeverPanicsAtNonPositiveWidth(t *testing.T) {
+	for _, avail := range []int{0, -5, -1000} {
+		cols := FitColumns(neverDropSpecs(), avail)
+		if len(cols) != len(neverDropSpecs()) {
+			t.Fatalf("avail=%d: len(cols) = %d, want %d (one per surviving spec)", avail, len(cols), len(neverDropSpecs()))
+		}
+		_ = cols[0].Width
+		_ = cols[1].Width
+		_ = cols[2].Width
+	}
+}

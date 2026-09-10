@@ -23,7 +23,7 @@ func (m Model) viewEvents() string {
 	}
 	if len(m.events) == 0 {
 		s.State = ScreenEmpty
-		s.Message = "Waiting for Docker events... (start or stop a container to see activity)"
+		s.Message = "Waiting for Docker events..."
 		return m.renderListScreen(s)
 	}
 

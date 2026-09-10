@@ -47,6 +47,9 @@ func (m Model) viewList() string {
 		s.State = ScreenError
 		s.Message = fmt.Sprintf("Cannot connect to Docker:\n\n%v\n\nMake sure Docker is running.", m.err)
 		return m.renderListScreen(s)
+	case m.loading:
+		s.State, s.Message = ScreenLoading, "Loading containers..."
+		return m.renderListScreen(s)
 	case len(m.containers) == 0:
 		s.State = ScreenEmpty
 		s.Message = "No containers found. Start some containers and press 'r' to refresh."

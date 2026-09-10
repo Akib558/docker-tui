@@ -95,23 +95,6 @@ func TestHelpBarVisibleOnSmallTerminal(t *testing.T) {
 	}
 }
 
-func TestListFrameReservesScrollChrome(t *testing.T) {
-	m := NewModel(&config.Config{Theme: "dark-green"})
-	m.width = 80
-	m.height = 24
-	m.loading = false
-	for i := 0; i < 30; i++ {
-		m.containers = append(m.containers, docker.ContainerInfo{
-			ID: string(rune('a' + i)), Name: "c", State: "running",
-		})
-	}
-	s := ListScreen{State: ScreenReady}
-	frame := newFrame(m.width, m.height, screenChrome(s, m.hasActiveNotification()))
-	if frame.BodyRows >= m.height {
-		t.Fatalf("body rows %d should be less than height %d", frame.BodyRows, m.height)
-	}
-}
-
 func TestNetworksViewRenders(t *testing.T) {
 	m := NewModel(&config.Config{Theme: "dark-green"})
 	m.width = 80

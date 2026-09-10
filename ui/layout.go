@@ -17,8 +17,8 @@ const (
 // Frame holds measured terminal layout for a view.
 type Frame struct {
 	TermW, TermH int
-	RowW         int // highlight / row body width (termW - 4)
-	TableW       int // column layout width (termW - 6)
+	RowW         int // highlight / row body width (termW - 5)
+	TableW       int // column layout width (termW - 7)
 	BodyRows     int // scrollable data rows
 }
 

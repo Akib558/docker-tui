@@ -10,7 +10,7 @@ type ListColumn struct {
 	Width int
 }
 
-// ListTableRow is one data row in a ListTable.
+// ListTableRow is one data row in a list-style screen.
 type ListTableRow struct {
 	Cells    []Cell
 	Selected bool
@@ -35,13 +35,4 @@ func renderViewTitle(name string, count int, selected int) string {
 		title += fmt.Sprintf("  %s %d selected", glyphMarkerSelect, selected)
 	}
 	return titleStyle.Render(title) + "\n"
-}
-
-// StateBadge returns a width-padded state glyph, optionally with health mark.
-func StateBadge(state, health string, width int) string {
-	icon := stateGlyph(state)
-	if health != "" {
-		icon += healthGlyphPlain(health)
-	}
-	return glyphPad(icon, width)
 }

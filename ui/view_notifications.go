@@ -31,7 +31,7 @@ func (m Model) viewNotifications() string {
 		s.Rows = append(s.Rows, ListTableRow{Cells: []Cell{
 			{Text: n.Timestamp.Format("15:04:05"), Width: cols[0].Width, FG: colorMuted},
 			{Text: icon, Width: cols[1].Width, FG: fg},
-			{Text: truncate(n.Message, cols[2].Width), Width: cols[2].Width, FG: colorText},
+			{Text: truncate(n.Message, cols[2].Width), Width: cols[2].Width, FG: fg},
 		}})
 	}
 	return m.renderListScreen(s)

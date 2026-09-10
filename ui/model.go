@@ -180,9 +180,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case newEventMsg:
+		wasAtEnd := m.eventsCursor >= len(m.events)-1
 		m.events = append(m.events, msg.ev)
 		if len(m.events) > 500 {
 			m.events = m.events[1:]
+			if m.eventsCursor > 0 {
+				m.eventsCursor--
+			}
+		}
+		if wasAtEnd {
+			m.eventsCursor = len(m.events) - 1
 		}
 		return m, msg.next
 

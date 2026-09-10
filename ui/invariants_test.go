@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -160,6 +162,119 @@ func TestDetailIdentityLineFitsWidth(t *testing.T) {
 			if got := lipgloss.Width(line); got > w {
 				t.Errorf("w=%d line %d is %d cols: %q", w, i+1, got, stripANSI(line))
 			}
+		}
+	}
+}
+
+// Invariant 5: no view may panic at pathologically narrow terminal widths.
+// FitColumns used to return nil whenever availW < 1 (and TableW(termW) is < 1
+// for termW <= 7), while every call site -- every migrated list view, plus the
+// detail identity line -- indexed the result unconditionally (cols[0].Width,
+// etc.), crashing with an index-out-of-range panic at any terminal width
+// from 1 to 7 columns. This doesn't assert anything about rendered content;
+// it only confirms View() completes without panicking.
+func TestViewsDoNotPanicAtNarrowWidths(t *testing.T) {
+	withFixedNow(t, fixedNow)
+	long := fixtureContainers()[4] // the deliberately long name
+
+	views := []struct {
+		name string
+		view viewState
+	}{
+		{"list", viewList},
+		{"detail", viewDetail},
+		{"images", viewImages},
+		{"volumes", viewVolumes},
+		{"networks", viewNetworks},
+		{"notifications", viewNotifications},
+		{"events", viewEvents},
+	}
+
+	for _, v := range views {
+		for w := 1; w <= 7; w++ {
+			t.Run(fmt.Sprintf("%s_w%d", v.name, w), func(t *testing.T) {
+				m := fixtureModel(goldenCase{view: v.view, width: w, height: 30, variant: "ready", cursor: "first"})
+				if v.view == viewDetail {
+					m.inspected = &long
+				}
+				defer func() {
+					if r := recover(); r != nil {
+						t.Fatalf("View() panicked at width %d: %v", w, r)
+					}
+				}()
+				_ = m.View()
+			})
+		}
+	}
+}
+
+// TestEveryLineFitsTerminalWidthAcrossStates decouples Invariant 1's width
+// check from goldenCases()'s combinations, which only sample the
+// Loading/Empty/NoMatch states at width 120. That sparse sampling is why a
+// message that overflows only at a narrower width (the events view's
+// empty-state message, at 72 columns, overflowed at width 40 but fit at
+// width 120) went undetected. This sweeps every width x state x view
+// combination directly, reusing fixtureModel/goldenCase/renderGolden's
+// construction without needing golden files for every combination. This is a
+// test-only addition -- goldenCases() itself, and the golden file set, are
+// unchanged.
+func TestEveryLineFitsTerminalWidthAcrossStates(t *testing.T) {
+	checkLines := func(t *testing.T, out string, w int) {
+		t.Helper()
+		for i, line := range strings.Split(out, "\n") {
+			if got := lipgloss.Width(line); got > w {
+				t.Errorf("line %d is %d cols wide, terminal is %d: %q", i+1, got, w, stripANSI(line))
+			}
+		}
+	}
+
+	listViews := []struct {
+		name string
+		view viewState
+	}{
+		{"list", viewList},
+		{"images", viewImages},
+		{"volumes", viewVolumes},
+		{"networks", viewNetworks},
+		{"notifications", viewNotifications},
+		{"events", viewEvents},
+	}
+	widths := []int{40, 80, 120, 200}
+	variants := []string{"loading", "empty", "nomatch", "ready"}
+
+	for _, v := range listViews {
+		for _, w := range widths {
+			for _, variant := range variants {
+				c := goldenCase{
+					name: v.name + "_w" + strconv.Itoa(w) + "_" + variant,
+					view: v.view, width: w, height: 30, variant: variant, cursor: "first",
+				}
+				t.Run(c.name, func(t *testing.T) {
+					checkLines(t, renderGolden(t, c), w)
+				})
+			}
+		}
+	}
+
+	// The detail view has its own Loading/Empty/Ready states (m.loading and
+	// m.inspected), not ListScreen's variant machinery, so it is swept
+	// separately here rather than through fixtureModel's variant switch.
+	long := fixtureContainers()[4]
+	for _, w := range widths {
+		for _, state := range []string{"loading", "empty", "ready"} {
+			name := "detail_w" + strconv.Itoa(w) + "_" + state
+			t.Run(name, func(t *testing.T) {
+				withFixedNow(t, fixedNow)
+				applyTheme(config.FindTheme("dark-green"))
+				m := Model{view: viewDetail, width: w, height: 30, cfg: fixtureConfig()}
+				switch state {
+				case "loading":
+					m.loading = true
+				case "ready":
+					m.inspected = &long
+				}
+				checkLines(t, m.View(), w)
+			})
 		}
 	}
 }

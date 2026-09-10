@@ -16,14 +16,22 @@ type ColumnSpec struct {
 //
 // Precondition: the combined width of every priority-0 (never-drop) column,
 // plus their gaps, should not exceed availW. If it does — e.g. a fixed-width
-// priority-0 column alongside a flexible priority-0 column, as in this
-// package's events-view caller — the returned total can exceed availW. This
-// only occurs at terminal widths far narrower than any real terminal
-// (observed threshold: termW < 16 for the events case), so it is documented
-// here rather than defended against.
+// priority-0 column alongside a flexible priority-0 column, as happens in the
+// events view, the notifications view, and the detail identity line — the
+// returned total can exceed availW. This only occurs at terminal widths far
+// narrower than any real terminal (observed threshold: termW < 16 for the
+// events case), so it is documented here rather than defended against.
+//
+// FitColumns always returns exactly one ListColumn per surviving spec (never
+// nil when specs is non-empty), even at availW <= 0 — callers may see very
+// small or zero Widths, but RenderRow's fitCells/clampRenderedWidth machinery
+// handles that overflow safely.
 func FitColumns(specs []ColumnSpec, availW int) []ListColumn {
-	if availW < 1 || len(specs) == 0 {
+	if len(specs) == 0 {
 		return nil
+	}
+	if availW < 1 {
+		availW = 1
 	}
 	keep := append([]ColumnSpec(nil), specs...)
 	for {

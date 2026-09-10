@@ -68,14 +68,14 @@ func (m Model) renderListScreen(s ListScreen) string {
 	var b strings.Builder
 
 	b.WriteString(m.renderHeader(w))
-	b.WriteString(renderViewTitle(s.Title, s.Count, s.Selected))
+	b.WriteString(clampRenderedWidth(renderViewTitle(s.Title, s.Count, s.Selected), w))
 	b.WriteString("\n")
 
 	for _, line := range s.Extra {
 		b.WriteString(line + "\n")
 	}
 	if s.Filter != "" {
-		b.WriteString(filterBarStyle.Render(glyphSearch+" "+s.Filter) + "\n")
+		b.WriteString(clampRenderedWidth(filterBarStyle.Render(glyphSearch+" "+s.Filter), w) + "\n")
 	}
 
 	if s.State != ScreenReady {
@@ -129,7 +129,7 @@ func (m Model) renderScreenTableHeader(s ListScreen) string {
 }
 
 func (m Model) renderScreenMessage(w int, s ListScreen) string {
-	style := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	style := lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Width(min(w-4, 70))
 	if s.State == ScreenError {
 		style = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).BorderForeground(colorDanger).

@@ -30,9 +30,6 @@ var (
 var (
 	titleStyle         lipgloss.Style
 	listHeaderStyle    lipgloss.Style
-	statusRunning      lipgloss.Style
-	statusStopped      lipgloss.Style
-	statusOther        lipgloss.Style
 	detailBoxStyle     lipgloss.Style
 	detailLabelStyle   lipgloss.Style
 	detailValueStyle   lipgloss.Style
@@ -83,10 +80,6 @@ func rebuildStyles() {
 	listHeaderStyle = lipgloss.NewStyle().
 		Bold(true).Foreground(colorMuted).
 		BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorBorder)
-
-	statusRunning = lipgloss.NewStyle().Bold(true).Foreground(colorSuccess)
-	statusStopped = lipgloss.NewStyle().Bold(true).Foreground(colorDanger)
-	statusOther = lipgloss.NewStyle().Bold(true).Foreground(colorWarning)
 
 	detailBoxStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).Padding(1, 2)
@@ -139,15 +132,4 @@ func rebuildStyles() {
 		BorderLeft(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorWarning)
 
 	selectedMarkStyle = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
-}
-
-func stateStyle(state string) lipgloss.Style {
-	switch state {
-	case "running":
-		return statusRunning
-	case "exited", "dead":
-		return statusStopped
-	default:
-		return statusOther
-	}
 }
