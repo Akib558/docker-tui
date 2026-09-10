@@ -71,3 +71,88 @@ func TestCursorRowBackgroundIsContiguous(t *testing.T) {
 	}
 	applyTheme(config.FindTheme("dark-green"))
 }
+
+// columnOffsets renders a sentinel row — each column holds a unique letter —
+// and reports the display column each cell starts at.
+func columnOffsets(termW int, cols []ListColumn, rs RowStyle) []int {
+	letters := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	cells := make([]Cell, len(cols))
+	for i, c := range cols {
+		cells[i] = Cell{Text: string(letters[i%len(letters)]), Width: c.Width}
+	}
+	plain := stripANSI(RenderRow(termW, cells, rs))
+	offsets := make([]int, 0, len(cols))
+	for i := range cols {
+		offsets = append(offsets, strings.Index(plain, string(letters[i%len(letters)])))
+	}
+	return offsets
+}
+
+// Invariant 3: a view's table header must start each column at exactly the
+// display column its data rows do.
+func TestHeaderAndRowColumnsAlign(t *testing.T) {
+	for _, w := range []int{40, 80, 120, 200} {
+		cols := FitColumns([]ColumnSpec{
+			{Label: "", Width: 3},
+			{Label: "NAME", Percent: 40, Min: 10},
+			{Label: "STATUS", Percent: 35, Min: 8, Priority: 1},
+			{Label: "ID", Percent: 25, Min: 8, Priority: 2},
+		}, TableW(w))
+
+		header := columnOffsets(w, cols, RowStyle{Marker: " "})
+		row := columnOffsets(w, cols, rowStyleFromKind(ListRowCursor, 0))
+		if len(header) != len(row) {
+			t.Fatalf("w=%d: header has %d columns, row has %d", w, len(header), len(row))
+		}
+		for i := range header {
+			if header[i] != row[i] {
+				t.Errorf("w=%d: column %d starts at %d in the header but %d in the row",
+					w, i, header[i], row[i])
+			}
+		}
+	}
+}
+
+// The live views must use the shared geometry, not hand-built headers. Views
+// still on hand-built headers fail this until they are migrated.
+func TestViewHeadersUseSharedGeometry(t *testing.T) {
+	handBuilt := []struct {
+		name string
+		view viewState
+	}{
+		{"images", viewImages},
+		{"volumes", viewVolumes},
+		{"networks", viewNetworks},
+		{"events", viewEvents},
+	}
+	for _, v := range handBuilt {
+		t.Run(v.name, func(t *testing.T) {
+			out := renderGolden(t, goldenCase{
+				name: v.name, view: v.view, width: 120, height: 30,
+				variant: "ready", cursor: "first",
+			})
+			lines := strings.Split(stripANSI(out), "\n")
+			hdr, row := -1, -1
+			for i, l := range lines {
+				if hdr < 0 && (strings.Contains(l, "NAME") || strings.Contains(l, "TAG") || strings.Contains(l, "ACTOR")) {
+					hdr = i
+					continue
+				}
+				if hdr >= 0 && strings.TrimSpace(l) != "" {
+					row = i
+					break
+				}
+			}
+			if hdr < 0 || row < 0 {
+				t.Skipf("could not locate header/row pair in %s", v.name)
+			}
+			// The first data column must start at the same offset in both.
+			hdrStart := len(lines[hdr]) - len(strings.TrimLeft(lines[hdr], " "))
+			rowStart := len(lines[row]) - len(strings.TrimLeft(lines[row], " "))
+			if hdrStart != rowStart {
+				t.Errorf("%s: header content starts at column %d, first row at %d",
+					v.name, hdrStart, rowStart)
+			}
+		})
+	}
+}
