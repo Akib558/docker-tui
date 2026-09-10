@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	markerCols   = 2
-	rowBodyPad   = 4 // marker(2) + right margin(2)
-	tableBodyPad = 6
+	markerCols   = 3
+	rowBodyPad   = 5 // gutter(3) + right margin(2)
+	tableBodyPad = 7
 )
 
 // Frame holds measured terminal layout for a view.

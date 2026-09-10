@@ -49,7 +49,7 @@ func (m Model) viewNetworks() string {
 		nameW = max(w-driverW-scopeW-internalW-14, 12)
 	}
 
-	hdr := "  " +
+	hdr := strings.Repeat(" ", markerCols) +
 		tableHeaderStyle.Width(nameW).Render("NAME") + "  " +
 		tableHeaderStyle.Width(driverW).Render("DRIVER") + "  " +
 		tableHeaderStyle.Width(scopeW).Render("SCOPE") + "  " +

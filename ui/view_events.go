@@ -18,7 +18,7 @@ func (m Model) viewEvents() string {
 	actorW := max(w*22/100, 16)
 	idW := max(w-timeW-typeW-actionW-actorW-12, 10)
 
-	hdr := "  " +
+	hdr := strings.Repeat(" ", markerCols) +
 		tableHeaderStyle.Width(timeW).Render("TIME") + "  " +
 		tableHeaderStyle.Width(typeW).Render("TYPE") + "  " +
 		tableHeaderStyle.Width(actionW).Render("ACTION") + "  " +

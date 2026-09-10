@@ -26,11 +26,13 @@ type Cell struct {
 	Bar        bool    // render BarPercent as a bar (including 0%)
 }
 
-// RowStyle controls marker and row-level background.
+// RowStyle controls marker, rail and row-level background.
 type RowStyle struct {
 	BG       lipgloss.Color
 	Marker   string
 	MarkerFG lipgloss.Color
+	Rail     string // left accent glyph; " " when the row has no accent
+	RailFG   lipgloss.Color
 	MinFG    lipgloss.Color // floor colour for cells too close to BG to read
 }
 
@@ -167,6 +169,18 @@ func RenderRow(totalWidth int, cells []Cell, rs RowStyle) string {
 		return s.Render(strings.Repeat(" ", n))
 	}
 
+	rail := rs.Rail
+	if rail == "" {
+		rail = " "
+	}
+	railStyle := lipgloss.NewStyle()
+	if rs.RailFG != "" {
+		railStyle = railStyle.Foreground(rs.RailFG).Bold(true)
+	}
+	if bg != "" {
+		railStyle = railStyle.Background(bg)
+	}
+
 	marker := rs.Marker
 	if marker == "" {
 		marker = " "
@@ -179,7 +193,9 @@ func RenderRow(totalWidth int, cells []Cell, rs RowStyle) string {
 		markerStyle = markerStyle.Background(bg)
 	}
 
-	line := markerStyle.Render(glyphPad(marker, 1)) + pad(1)
+	line := railStyle.Render(glyphPad(rail, 1)) +
+		markerStyle.Render(glyphPad(marker, 1)) +
+		pad(1)
 
 	for i, cell := range cells {
 		var part string
@@ -214,11 +230,14 @@ func clampRenderedWidth(s string, maxW int) string {
 func rowStyleFromKind(kind ListRowKind, rowIdx int) RowStyle {
 	switch kind {
 	case ListRowCursor:
-		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerCursor, MarkerFG: colorPrimary, MinFG: colorSubtext}
+		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerCursor, MarkerFG: colorPrimary,
+			Rail: glyphRail, RailFG: colorPrimary, MinFG: colorSubtext}
 	case ListRowSelected:
-		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerSelect, MarkerFG: colorWarning, MinFG: colorSubtext}
+		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerSelect, MarkerFG: colorWarning,
+			Rail: glyphRail, RailFG: colorWarning, MinFG: colorSubtext}
 	case ListRowCursorSelected:
-		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerBoth, MarkerFG: colorPrimary, MinFG: colorSubtext}
+		return RowStyle{BG: colorBgSelected, Marker: glyphMarkerBoth, MarkerFG: colorPrimary,
+			Rail: glyphRail, RailFG: colorPrimary, MinFG: colorSubtext}
 	default:
 		rs := RowStyle{Marker: " "}
 		if rowIdx%2 == 1 {

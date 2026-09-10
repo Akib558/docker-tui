@@ -11,11 +11,11 @@ import (
 )
 
 func TestRowWAndTableW(t *testing.T) {
-	if got := RowW(80); got != 76 {
-		t.Fatalf("RowW(80) = %d, want 76", got)
+	if got := RowW(80); got != 75 {
+		t.Fatalf("RowW(80) = %d, want 75", got)
 	}
-	if got := TableW(80); got != 74 {
-		t.Fatalf("TableW(80) = %d, want 74", got)
+	if got := TableW(80); got != 73 {
+		t.Fatalf("TableW(80) = %d, want 73", got)
 	}
 }
 

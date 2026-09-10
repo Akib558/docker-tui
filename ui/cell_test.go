@@ -56,3 +56,32 @@ func TestRenderRowZebraAlternates(t *testing.T) {
 		t.Fatalf("zebra styles should differ between even and odd rows")
 	}
 }
+
+func TestCursorRowHasAccentRail(t *testing.T) {
+	cells := []Cell{{Text: "web-api", Width: 24, FG: colorText}}
+
+	cursor := stripANSI(renderRowFromKind(80, ListRowCursor, 0, cells))
+	if !strings.HasPrefix(cursor, glyphRail) {
+		t.Fatalf("cursor row should start with the accent rail %q, got %q", glyphRail, cursor)
+	}
+
+	normal := stripANSI(renderRowFromKind(80, ListRowNormal, 0, cells))
+	if strings.HasPrefix(normal, glyphRail) {
+		t.Fatalf("a non-highlighted row must not draw the rail, got %q", normal)
+	}
+	if len(normal) == 0 || normal[0] != ' ' {
+		t.Fatalf("a non-highlighted row must reserve the rail column as a space, got %q", normal)
+	}
+
+	// Geometry must not depend on row kind, or zebra rows and the table
+	// header would drift relative to the cursor row. Compared by display
+	// column, not byte offset: glyphRail and the cursor marker are
+	// multi-byte UTF-8 but still one column wide, so a raw strings.Index
+	// byte offset would differ from the single-byte ASCII gutter spaces
+	// a normal row uses, even though both occupy the same column.
+	cursorName := displayWidth(cursor[:strings.Index(cursor, "web-api")])
+	normalName := displayWidth(normal[:strings.Index(normal, "web-api")])
+	if cursorName != normalName {
+		t.Fatalf("content offset differs by row kind: cursor=%d normal=%d", cursorName, normalName)
+	}
+}

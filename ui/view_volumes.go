@@ -49,7 +49,7 @@ func (m Model) viewVolumes() string {
 		mountW = max(w-nameW-driverW-scopeW-12, 12)
 	}
 
-	hdr := "  " +
+	hdr := strings.Repeat(" ", markerCols) +
 		tableHeaderStyle.Width(nameW).Render("NAME") + "  " +
 		tableHeaderStyle.Width(driverW).Render("DRIVER") + "  " +
 		tableHeaderStyle.Width(mountW).Render("MOUNTPOINT") + "  " +

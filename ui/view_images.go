@@ -47,7 +47,7 @@ func (m Model) viewImages() string {
 		tagW = max(w-idW-sizeW-dateW-12, 12)
 	}
 
-	hdr := "  " +
+	hdr := strings.Repeat(" ", markerCols) +
 		tableHeaderStyle.Width(tagW).Render("TAG") + "  " +
 		tableHeaderStyle.Width(idW).Render("IMAGE ID") + "  " +
 		tableHeaderStyle.Width(sizeW).Render("SIZE") + "  " +

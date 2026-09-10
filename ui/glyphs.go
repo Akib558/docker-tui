@@ -20,6 +20,7 @@ const (
 	glyphMarkerCursor = "▸"
 	glyphMarkerSelect = "◈"
 	glyphMarkerBoth   = "◉"
+	glyphRail         = "┃"
 	glyphToastOK      = "✓"
 	glyphToastErr     = "✗"
 	glyphBarFill      = "█"
