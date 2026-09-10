@@ -165,7 +165,7 @@ func (m Model) helpDialogBodyLines() []string {
 		{"X", "system prune"},
 		{"d", "remove"},
 		{"e", "exec shell"},
-		{"D", "docker events"},
+		{"D", "docker events stream"},
 		{"L", "centralized logs"},
 		{"N", "notification center"},
 		{"i", "images view"},

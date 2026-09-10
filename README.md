@@ -120,6 +120,7 @@ Seven tabs per container — no more piping `docker inspect` through `jq`:
 - **Images** — list, pull, remove, and prune dangling images.
 - **Volumes** — list, remove, prune orphaned volumes, filter, and multi-select.
 - **Networks** — list, remove, filter, and multi-select.
+- **Events** — live stream of Docker daemon events (container, image, network, and volume activity).
 
 ### 🔔 Notifications & 🎨 ergonomics
 
@@ -236,6 +237,7 @@ docker-tui
 | `v` | Open volumes view |
 | `n` | Open networks view |
 | `N` | Open notification center |
+| `D` | Open Docker events stream |
 | `+` / `-` | Increase or decrease refresh interval |
 | `r` | Force refresh |
 | `t` | Open theme picker |
@@ -320,6 +322,15 @@ docker-tui
 | `j` / `k`, arrows | Navigate notifications |
 | `g` / `G` | Jump to oldest / newest |
 | `c` | Clear all notifications |
+| `esc` / `q` | Return to the container list |
+
+### Events
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` | Navigate events |
+| `c` | Clear the event log |
+| `?` | Show full keyboard reference |
 | `esc` / `q` | Return to the container list |
 
 ## Configuration
