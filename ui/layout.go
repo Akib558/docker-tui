@@ -128,14 +128,6 @@ func (m Model) imagesFrame() Frame {
 	return newFrame(m.width, m.height, m.standardChrome(extra))
 }
 
-func (m Model) volumesFrame() Frame {
-	extra := 0
-	if len(m.volumes) > 0 {
-		extra++
-	}
-	return newFrame(m.width, m.height, m.standardChrome(extra))
-}
-
 func (m Model) networksFrame() Frame {
 	extra := 0
 	if len(m.networks) > 0 {

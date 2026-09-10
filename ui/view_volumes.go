@@ -1,112 +1,80 @@
 package ui
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
 func (m Model) viewVolumes() string {
-	var b strings.Builder
-	w := m.width
 	vols := m.filteredVolumes()
+	cols := FitColumns([]ColumnSpec{
+		{Label: "NAME", Percent: 35, Min: 12},
+		{Label: "DRIVER", Width: 10, Priority: 2},
+		{Label: "MOUNTPOINT", Percent: 45, Min: 15, Priority: 1},
+		{Label: "SCOPE", Width: 8, Priority: 3},
+	}, TableW(m.width))
 
-	b.WriteString(m.renderHeader(w))
-	var title string
-	if len(m.selected) > 0 {
-		title = fmt.Sprintf("Volumes  (%d)  ◈ %d selected", len(m.volumes), len(m.selected))
-	} else {
-		title = fmt.Sprintf("Volumes  (%d)", len(m.volumes))
+	s := ListScreen{
+		Title:    "Volumes",
+		Count:    len(m.volumes),
+		Selected: len(m.selected),
+		Cols:     cols,
+		Cursor:   m.volCursor,
+		State:    ScreenReady,
+		Help:     m.volumesHelpKeys(),
 	}
-	b.WriteString("  " + lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(title) + "\n\n")
-
-	if m.loading {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("  Loading volumes...") + "\n")
-		b.WriteString(m.volumesHelp(w))
-		return b.String()
-	}
-	if len(m.volumes) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("  No volumes found.") + "\n")
-		b.WriteString(m.volumesHelp(w))
-		return b.String()
-	}
-	if len(vols) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Italic(true).
-			Render("  No volumes match filter.") + "\n")
-		b.WriteString(m.volumesHelp(w))
-		return b.String()
+	// renderHeader already shows a live typing box in the header's center
+	// while m.volFiltering is true (see its m.volFiltering && m.view ==
+	// viewVolumes branch) — showing the scaffold's own filter bar at the
+	// same time would duplicate that indicator. Show it only once filtering
+	// is no longer active, as a persistent "currently filtering" badge —
+	// something the pre-migration view never had.
+	if !m.volFiltering {
+		s.Filter = m.volFilterText
 	}
 
-	nameW := max(w*40/100, 20)
-	driverW := 12
-	mountW := max(w*35/100, 20)
-	scopeW := 10
-	usedW := nameW + driverW + mountW + scopeW + 8
-	if usedW > w-4 {
-		mountW = max(w-nameW-driverW-scopeW-12, 12)
+	switch {
+	case m.loading:
+		s.State, s.Message = ScreenLoading, "Loading volumes..."
+		return m.renderListScreen(s)
+	case len(m.volumes) == 0:
+		s.State, s.Message = ScreenEmpty, "No volumes found."
+		return m.renderListScreen(s)
+	case len(vols) == 0:
+		s.State, s.Message = ScreenNoMatch, "No volumes match the current filter."
+		return m.renderListScreen(s)
 	}
 
-	hdr := strings.Repeat(" ", markerCols) +
-		tableHeaderStyle.Width(nameW).Render("NAME") + "  " +
-		tableHeaderStyle.Width(driverW).Render("DRIVER") + "  " +
-		tableHeaderStyle.Width(mountW).Render("MOUNTPOINT") + "  " +
-		tableHeaderStyle.Width(scopeW).Render("SCOPE")
-	b.WriteString(listHeaderStyle.Width(w).Render(hdr) + "\n")
-
-	frame := m.volumesFrame()
-	visibleRows := frame.BodyRows
-	startIdx := 0
-	if m.volCursor >= visibleRows {
-		startIdx = m.volCursor - visibleRows + 1
-	}
-	endIdx := min(startIdx+visibleRows, len(vols))
-
-	for i := startIdx; i < endIdx; i++ {
-		vol := vols[i]
-		cells := []Cell{
-			{Text: truncate(vol.DisplayName(), nameW), Width: nameW, FG: colorText},
-			{Text: truncate(vol.Driver, driverW), Width: driverW, FG: colorDim},
-			{Text: truncate(vol.Mountpoint, mountW), Width: mountW, FG: colorSubtext},
-			{Text: vol.Scope, Width: scopeW, FG: colorMuted},
+	s.Rows = make([]ListTableRow, 0, len(vols))
+	for _, v := range vols {
+		cells := []Cell{{Text: truncate(v.DisplayName(), cols[0].Width), Width: cols[0].Width, FG: colorText}}
+		for i, c := range cols[1:] {
+			var text string
+			var fg lipgloss.Color
+			switch c.Label {
+			case "DRIVER":
+				text, fg = v.Driver, colorSubtext
+			case "MOUNTPOINT":
+				text, fg = v.Mountpoint, colorDim
+			case "SCOPE":
+				text, fg = v.Scope, colorMuted
+			}
+			cells = append(cells, Cell{Text: truncate(text, cols[i+1].Width), Width: cols[i+1].Width, FG: fg})
 		}
-		isSelected := m.selected[vol.Name]
-		var kind ListRowKind
-		switch {
-		case i == m.volCursor && isSelected:
-			kind = ListRowCursorSelected
-		case i == m.volCursor:
-			kind = ListRowCursor
-		case isSelected:
-			kind = ListRowSelected
-		default:
-			kind = ListRowNormal
-		}
-		b.WriteString(renderRowFromKind(w, kind, i, cells) + "\n")
+		s.Rows = append(s.Rows, ListTableRow{Cells: cells, Selected: m.selected[v.Name]})
 	}
-
-	if len(vols) > visibleRows {
-		pct := float64(m.volCursor) / float64(max(len(vols)-1, 1)) * 100
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).
-			Render(fmt.Sprintf("  ↕ %d/%d (%.0f%%)", m.volCursor+1, len(vols), pct)) + "\n")
-	}
-
-	b.WriteString("\n" + m.volumesHelp(w))
-	return b.String()
+	return m.renderListScreen(s)
 }
 
-func (m Model) volumesHelp(w int) string {
+func (m Model) volumesHelpKeys() string {
 	if m.volFiltering {
-		return renderHelpBar(w, fmtKeys([]struct{ key, desc string }{
+		return fmtKeys([]struct{ key, desc string }{
 			{"type", "search"},
 			{"backspace", "delete"},
 			{"enter/esc", "done"},
 			{"ctrl+u", "clear"},
-		}))
+		})
 	}
-	keys := []struct{ key, desc string }{
+	return fmtKeys([]struct{ key, desc string }{
 		{"j/k", "nav"},
 		{"space", "select"},
 		{"d", "remove"},
@@ -114,6 +82,5 @@ func (m Model) volumesHelp(w int) string {
 		{"/", "filter"},
 		{"?", "help"},
 		{"esc", "back"},
-	}
-	return renderHelpBar(w, fmtKeys(keys))
+	})
 }
