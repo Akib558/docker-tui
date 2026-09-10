@@ -113,21 +113,6 @@ func (m Model) listFrame(filteredCount int) Frame {
 	return newFrame(m.width, m.height, chrome)
 }
 
-func (m Model) standardChrome(extra int) int {
-	return 9 + extra // header(2) + title(2) + table hdr(1) + gap(1) + help(1) + extras
-}
-
-func (m Model) imagesFrame() Frame {
-	extra := 0
-	if m.imagePullProgress != "" {
-		extra++
-	}
-	if len(m.images) > 0 {
-		extra++ // scroll indicator reserve
-	}
-	return newFrame(m.width, m.height, m.standardChrome(extra))
-}
-
 func (m Model) eventsFrame() Frame {
 	chrome := 7 // header(2) + title(2) + table hdr(1) + gap+help(2)
 	return newFrame(m.width, m.height, chrome)
