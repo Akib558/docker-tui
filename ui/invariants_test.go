@@ -145,3 +145,21 @@ func TestViewHeadersUseSharedGeometry(t *testing.T) {
 		})
 	}
 }
+
+// Invariant 4: the detail view's identity line (name/state/image/ID) and tab
+// bar must never overflow the terminal width, even for a deliberately long
+// container name.
+func TestDetailIdentityLineFitsWidth(t *testing.T) {
+	withFixedNow(t, fixedNow)
+	long := fixtureContainers()[4] // the deliberately long name
+	for _, w := range []int{40, 80, 120, 200} {
+		m := fixtureModel(goldenCase{view: viewDetail, width: w, height: 30, variant: "ready", cursor: "first"})
+		m.inspected = &long
+		m.view = viewDetail
+		for i, line := range strings.Split(m.View(), "\n") {
+			if got := lipgloss.Width(line); got > w {
+				t.Errorf("w=%d line %d is %d cols: %q", w, i+1, got, stripANSI(line))
+			}
+		}
+	}
+}

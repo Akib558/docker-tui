@@ -29,9 +29,9 @@ func (m Model) viewDetail() string {
 	b.WriteString(m.renderHeader(w))
 	b.WriteString(m.renderDetailIdentity(c, w) + "\n\n")
 
-	tabLine := m.renderDetailTabs(boxWidth)
+	bar := clampRenderedWidth(m.renderDetailTabs(boxWidth), m.width)
 	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", boxWidth))
-	b.WriteString(tabLine + "\n" + sep + "\n")
+	b.WriteString(bar + "\n" + sep + "\n")
 
 	var tabContent string
 	switch m.detailTab {
@@ -552,15 +552,20 @@ func (m Model) renderProcessesTab(c *docker.ContainerInfo, width int) string {
 }
 
 func (m Model) renderDetailIdentity(c *docker.ContainerInfo, w int) string {
-	dot := lipgloss.NewStyle().Foreground(colorDim).Render("  ·  ")
-	stateStr := StateBadgeStyled(c.State)
-	reserve := 2 + lipgloss.Width(stateStr) + lipgloss.Width(dot)*3 + 16
-	remain := max(w-reserve, 20)
-	nameW := max(remain*55/100, 8)
-	imgW := max(remain-nameW, 8)
+	badgeText := stateGlyph(c.State) + " " + stateDisplayName(c.State)
 
-	nameStr := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(truncateDisplay(c.Name, nameW))
-	imgStr := lipgloss.NewStyle().Foreground(colorSubtext).Render(truncateDisplay(c.Image, imgW))
-	idStr := lipgloss.NewStyle().Foreground(colorDim).Render(truncateDisplay(c.ID, 16))
-	return "  " + nameStr + dot + stateStr + dot + imgStr + dot + idStr
+	cols := FitColumns([]ColumnSpec{
+		{Percent: 55, Min: 8},            // name
+		{Width: displayWidth(badgeText)}, // state badge
+		{Percent: 45, Min: 8},            // image
+		{Width: 16},                      // container ID
+	}, TableW(w))
+
+	cells := []Cell{
+		{Text: c.Name, Width: cols[0].Width, FG: colorPrimary, Bold: true},
+		{Text: badgeText, Width: cols[1].Width, FG: stateFGColor(c.State), Bold: true},
+		{Text: c.Image, Width: cols[2].Width, FG: colorSubtext},
+		{Text: c.ID, Width: cols[3].Width, FG: colorDim},
+	}
+	return RenderRow(w, cells, RowStyle{Marker: " "})
 }
