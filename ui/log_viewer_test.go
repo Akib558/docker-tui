@@ -348,6 +348,7 @@ func TestCentralLogsFilterLifecycle(t *testing.T) {
 	}
 
 	model, _ = filtering.updateCentralLogs(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	model, _ = model.(Model).Update(centralLogFilterDebounceMsg{})
 	typed := model.(Model)
 	if typed.centralLogFilter != "f" || typed.centralLogs.Filter != "f" {
 		t.Fatalf("filter text = %q, viewer filter = %q", typed.centralLogFilter, typed.centralLogs.Filter)

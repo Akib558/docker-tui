@@ -41,10 +41,10 @@ func (m Model) viewNetworks() string {
 		return m.renderListScreen(s)
 	}
 
-	s.Rows = make([]ListTableRow, 0, len(nets))
-	for _, n := range nets {
+	m.fillVisibleListRows(&s, len(nets), func(i int) ListTableRow {
+		n := nets[i]
 		cells := []Cell{{Text: truncate(n.Name, cols[0].Width), Width: cols[0].Width, FG: colorText}}
-		for i, c := range cols[1:] {
+		for j, c := range cols[1:] {
 			var text string
 			var fg lipgloss.Color
 			switch c.Label {
@@ -55,10 +55,10 @@ func (m Model) viewNetworks() string {
 			case "NETWORK ID":
 				text, fg = n.ID, colorDim
 			}
-			cells = append(cells, Cell{Text: truncate(text, cols[i+1].Width), Width: cols[i+1].Width, FG: fg})
+			cells = append(cells, Cell{Text: truncate(text, cols[j+1].Width), Width: cols[j+1].Width, FG: fg})
 		}
-		s.Rows = append(s.Rows, ListTableRow{Cells: cells, Selected: m.selected[n.ID]})
-	}
+		return ListTableRow{Cells: cells, Selected: m.selected[n.ID]}
+	})
 	return m.renderListScreen(s)
 }
 

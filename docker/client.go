@@ -7,7 +7,6 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -587,27 +586,11 @@ func (c *Client) GetContainerStats(id string) (*ContainerResourceStats, error) {
 
 func (c *Client) GetAllContainerStats(ids []string) map[string]*ContainerResourceStats {
 	result := make(map[string]*ContainerResourceStats)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	sem := make(chan struct{}, 5) // limit concurrency
-
-	for _, id := range ids {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(id string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			stats, err := c.GetContainerStats(id)
-			if err == nil {
-				mu.Lock()
-				result[id] = stats
-				mu.Unlock()
-			}
-		}(id)
-	}
-
-	wg.Wait()
+	CollectContainerStats(c, ids, time.Hour, func(batch StatsBatch) {
+		for id, stats := range batch.Stats {
+			result[id] = stats
+		}
+	})
 	return result
 }
 

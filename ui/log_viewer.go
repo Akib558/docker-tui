@@ -43,27 +43,32 @@ type LogEntry struct {
 	Message       string
 	System        bool
 	Sequence      int64
+	msgLower      string
+	nameLower     string
+	idLower       string
 }
 
 type LogViewerState struct {
-	Entries          []LogEntry
-	Targets          map[string]LogTarget
-	Scroll           int
-	Follow           bool
-	Filter           string
-	UseRegex         bool
-	SelectedIndex    int
-	LogCursor        int
-	Focused          int
-	Selection        map[int64]bool
-	HiddenContainers map[string]bool
-	SelectAnchor     int
-	ShowLegend       bool
-	MaxEntries       int
-	nextSeq          int64
-	filterCache      []LogEntry
-	filterKey        string
-	filterRE         *regexp.Regexp
+	Entries            []LogEntry
+	Targets            map[string]LogTarget
+	Scroll             int
+	Follow             bool
+	Filter             string
+	UseRegex           bool
+	SelectedIndex      int
+	LogCursor          int
+	Focused            int
+	Selection          map[int64]bool
+	HiddenContainers   map[string]bool
+	SelectAnchor       int
+	ShowLegend         bool
+	MaxEntries         int
+	nextSeq            int64
+	filterRE           *regexp.Regexp
+	filterLower        string
+	visibleEntries     []LogEntry
+	visibleSig         string
+	visibleIncremental bool
 }
 
 func NewLogViewerState(maxEntries int, targets []LogTarget) LogViewerState {
@@ -152,9 +157,78 @@ func stableLogColor(target LogTarget) string {
 	return logPalette[int(h.Sum32())%len(logPalette)]
 }
 
-func (s *LogViewerState) invalidateFilterCache() {
-	s.filterCache = nil
-	s.filterKey = ""
+func (s *LogViewerState) invalidateVisible() {
+	s.visibleEntries = nil
+	s.visibleSig = ""
+	s.visibleIncremental = false
+}
+
+func (s *LogViewerState) visibilitySig() string {
+	return s.Filter + "|" + fmt.Sprint(s.UseRegex) + "|" + fmt.Sprint(len(s.Entries)) + "|" + s.hiddenContainerKey()
+}
+
+func (s *LogViewerState) prepareEntry(entry LogEntry) LogEntry {
+	entry.Message = sanitizeOutputText(entry.Message)
+	if strings.TrimSpace(entry.Message) == "" {
+		return LogEntry{}
+	}
+	entry.msgLower = strings.ToLower(entry.Message)
+	entry.nameLower = strings.ToLower(entry.ContainerName)
+	entry.idLower = strings.ToLower(entry.ContainerID)
+	return entry
+}
+
+func (s *LogViewerState) entryPassesFilter(entry LogEntry) bool {
+	if s.HiddenContainers != nil && s.HiddenContainers[entry.ContainerID] {
+		return false
+	}
+	if s.Filter == "" {
+		return true
+	}
+	if s.UseRegex && s.filterRE != nil {
+		return s.filterRE.MatchString(entry.Message) ||
+			s.filterRE.MatchString(entry.ContainerName) ||
+			s.filterRE.MatchString(entry.ContainerID)
+	}
+	q := s.filterLower
+	return strings.Contains(entry.nameLower, q) ||
+		strings.Contains(entry.idLower, q) ||
+		strings.Contains(entry.msgLower, q)
+}
+
+func (s *LogViewerState) rebuildVisible() {
+	s.visibleEntries = make([]LogEntry, 0, len(s.Entries))
+	for _, entry := range s.Entries {
+		if s.entryPassesFilter(entry) {
+			s.visibleEntries = append(s.visibleEntries, entry)
+		}
+	}
+	s.visibleSig = s.visibilitySig()
+	s.visibleIncremental = true
+}
+
+func (s *LogViewerState) ensureVisible() {
+	sig := s.visibilitySig()
+	if s.visibleSig == sig && s.visibleEntries != nil {
+		return
+	}
+	s.rebuildVisible()
+}
+
+func (s *LogViewerState) noteAppended(entry LogEntry) {
+	if !s.visibleIncremental || s.visibleSig == "" {
+		s.invalidateVisible()
+		return
+	}
+	prevLen := len(s.visibleEntries)
+	sig := s.visibilitySig()
+	if s.entryPassesFilter(entry) {
+		s.visibleEntries = append(s.visibleEntries, entry)
+	}
+	s.visibleSig = sig
+	if len(s.visibleEntries) < prevLen {
+		s.invalidateVisible()
+	}
 }
 
 func (s *LogViewerState) ToggleContainer(id string) {
@@ -165,7 +239,7 @@ func (s *LogViewerState) ToggleContainer(id string) {
 		s.HiddenContainers = make(map[string]bool)
 	}
 	s.HiddenContainers[id] = !s.HiddenContainers[id]
-	s.invalidateFilterCache()
+	s.invalidateVisible()
 }
 
 func (s *LogViewerState) ShowAllContainers() {
@@ -173,7 +247,7 @@ func (s *LogViewerState) ShowAllContainers() {
 		return
 	}
 	s.HiddenContainers = make(map[string]bool)
-	s.invalidateFilterCache()
+	s.invalidateVisible()
 }
 
 func (s LogViewerState) IsContainerHidden(id string) bool {
@@ -194,31 +268,32 @@ func (s LogViewerState) hiddenContainerKey() string {
 	return strings.Join(ids, ",")
 }
 
-func (s LogViewerState) entriesAfterContainerFilter() []LogEntry {
-	if len(s.HiddenContainers) == 0 {
-		return s.Entries
-	}
-	out := make([]LogEntry, 0, len(s.Entries))
-	for _, entry := range s.Entries {
-		if !s.HiddenContainers[entry.ContainerID] {
-			out = append(out, entry)
-		}
-	}
-	return out
-}
-
 func (s *LogViewerState) Append(entries ...LogEntry) {
 	for _, entry := range entries {
 		s.insertEntry(entry)
 	}
-	s.invalidateFilterCache()
 }
 
 func (s *LogViewerState) AppendSorted(entries ...LogEntry) {
-	for _, entry := range entries {
-		s.insertEntrySorted(entry)
+	if len(entries) == 0 {
+		return
 	}
-	s.invalidateFilterCache()
+	for _, entry := range entries {
+		s.insertEntrySorted(entry, false)
+	}
+	s.maybeCompactEntries()
+	s.invalidateVisible()
+}
+
+func (s *LogViewerState) AppendSortedBatch(entries []LogEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	for _, entry := range entries {
+		s.insertEntrySorted(entry, false)
+	}
+	s.maybeCompactEntries()
+	s.invalidateVisible()
 }
 
 func (s *LogViewerState) insertEntry(entry LogEntry) {
@@ -228,46 +303,68 @@ func (s *LogViewerState) insertEntry(entry LogEntry) {
 	} else if entry.Sequence > s.nextSeq {
 		s.nextSeq = entry.Sequence
 	}
-	entry.Message = sanitizeOutputText(entry.Message)
-	if strings.TrimSpace(entry.Message) == "" {
+	entry = s.prepareEntry(entry)
+	if entry.Message == "" {
 		return
 	}
 	s.Entries = append(s.Entries, entry)
 	s.trimEntries()
+	s.noteAppended(entry)
 }
 
-func (s *LogViewerState) insertEntrySorted(entry LogEntry) {
+func (s *LogViewerState) insertEntrySorted(entry LogEntry, compact bool) {
 	if entry.Sequence == 0 {
 		s.nextSeq++
 		entry.Sequence = s.nextSeq
 	} else if entry.Sequence > s.nextSeq {
 		s.nextSeq = entry.Sequence
 	}
-	entry.Message = sanitizeOutputText(entry.Message)
-	if strings.TrimSpace(entry.Message) == "" {
+	entry = s.prepareEntry(entry)
+	if entry.Message == "" {
 		return
 	}
-	idx := len(s.Entries)
-	for idx > 0 && logEntryLess(s.Entries[idx-1], entry) {
-		idx--
-	}
+	idx := sort.Search(len(s.Entries), func(i int) bool {
+		return !logEntryLess(s.Entries[i], entry)
+	})
 	s.Entries = append(s.Entries, LogEntry{})
 	copy(s.Entries[idx+1:], s.Entries[idx:])
 	s.Entries[idx] = entry
 	s.trimEntries()
+	if compact {
+		s.maybeCompactEntries()
+	}
+}
+
+func (s *LogViewerState) maybeCompactEntries() {
+	if len(s.Entries) == 0 {
+		return
+	}
+	if cap(s.Entries) > s.MaxEntries*4 && cap(s.Entries) > len(s.Entries)*2 {
+		compact := make([]LogEntry, len(s.Entries))
+		copy(compact, s.Entries)
+		s.Entries = compact
+	}
 }
 
 func (s *LogViewerState) trimEntries() {
-	if len(s.Entries) > s.MaxEntries {
-		trim := len(s.Entries) - s.MaxEntries
-		s.Entries = s.Entries[trim:]
-		if !s.Follow {
-			s.Scroll -= trim
-			if s.Scroll < 0 {
-				s.Scroll = 0
-			}
+	if len(s.Entries) <= s.MaxEntries {
+		return
+	}
+	trim := len(s.Entries) - s.MaxEntries
+	if !s.Follow {
+		s.Scroll -= trim
+		if s.Scroll < 0 {
+			s.Scroll = 0
 		}
 	}
+	if trim > len(s.Entries)/2 {
+		compact := make([]LogEntry, s.MaxEntries)
+		copy(compact, s.Entries[trim:])
+		s.Entries = compact
+	} else {
+		s.Entries = s.Entries[trim:]
+	}
+	s.invalidateVisible()
 }
 
 func logEntryLess(a, b LogEntry) bool {
@@ -282,14 +379,15 @@ func logEntryLess(a, b LogEntry) bool {
 
 func (s *LogViewerState) SetFilter(filter string) {
 	s.Filter = strings.TrimSpace(filter)
-	s.invalidateFilterCache()
+	s.filterLower = strings.ToLower(s.Filter)
+	s.invalidateVisible()
 	s.compileFilterRE()
 	s.normalize(1)
 }
 
 func (s *LogViewerState) SetUseRegex(useRegex bool) {
 	s.UseRegex = useRegex
-	s.invalidateFilterCache()
+	s.invalidateVisible()
 	s.compileFilterRE()
 }
 
@@ -304,54 +402,12 @@ func (s *LogViewerState) compileFilterRE() {
 	}
 }
 
-func (s LogViewerState) FilteredEntries() []LogEntry {
-	base := s.entriesAfterContainerFilter()
-	if s.Filter == "" {
-		return base
-	}
-	key := s.Filter + "|" + fmt.Sprint(s.UseRegex) + "|" + fmt.Sprint(len(base)) + "|" + s.hiddenContainerKey()
-	if s.filterCache != nil && s.filterKey == key {
-		return s.filterCache
-	}
-	var out []LogEntry
-	if s.UseRegex && s.filterRE != nil {
-		out = s.filteredEntriesRegexFrom(base)
-	} else {
-		out = s.filteredEntriesSubstringFrom(base)
-	}
-	return out
+func (s *LogViewerState) FilteredEntries() []LogEntry {
+	s.ensureVisible()
+	return s.visibleEntries
 }
 
-func (s LogViewerState) filteredEntriesSubstringFrom(entries []LogEntry) []LogEntry {
-	q := strings.ToLower(s.Filter)
-	out := make([]LogEntry, 0, len(entries))
-	for _, entry := range entries {
-		if strings.Contains(strings.ToLower(entry.ContainerName), q) ||
-			strings.Contains(strings.ToLower(entry.ContainerID), q) ||
-			strings.Contains(strings.ToLower(entry.Message), q) {
-			out = append(out, entry)
-		}
-	}
-	return out
-}
-
-func (s LogViewerState) filteredEntriesRegexFrom(entries []LogEntry) []LogEntry {
-	re := s.filterRE
-	if re == nil {
-		return s.filteredEntriesSubstringFrom(entries)
-	}
-	out := make([]LogEntry, 0, len(entries))
-	for _, entry := range entries {
-		if re.MatchString(entry.Message) ||
-			re.MatchString(entry.ContainerName) ||
-			re.MatchString(entry.ContainerID) {
-			out = append(out, entry)
-		}
-	}
-	return out
-}
-
-func (s LogViewerState) VisibleEntries(height int) []LogEntry {
+func (s *LogViewerState) VisibleEntries(height int) []LogEntry {
 	filtered := s.FilteredEntries()
 	start, end, _ := s.visibleWindowFor(filtered, height)
 	return filtered[start:end]
@@ -379,22 +435,23 @@ func (s LogViewerState) visibleWindowFor(filtered []LogEntry, height int) (int, 
 	return scroll, min(scroll+height, total), total
 }
 
-func (s LogViewerState) VisibleWindow(height int) (int, int, int) {
+func (s *LogViewerState) VisibleWindow(height int) (int, int, int) {
 	return s.visibleWindowFor(s.FilteredEntries(), height)
 }
 
 func (s *LogViewerState) ScrollBy(delta, height int) {
+	filtered := s.FilteredEntries()
 	if delta < 0 && s.Follow {
-		start, _, _ := s.VisibleWindow(height)
+		start, _, _ := s.visibleWindowFor(filtered, height)
 		s.Scroll = start
 	}
 	if delta < 0 {
 		s.Follow = false
 	}
 	s.Scroll += delta
-	s.normalize(height)
+	s.normalizeWith(filtered, height)
 	if delta > 0 {
-		total := len(s.FilteredEntries())
+		total := len(filtered)
 		if height < 1 {
 			height = 1
 		}
@@ -421,10 +478,13 @@ func (s *LogViewerState) ScrollEnd() {
 }
 
 func (s *LogViewerState) normalize(height int) {
+	s.normalizeWith(s.FilteredEntries(), height)
+}
+
+func (s *LogViewerState) normalizeWith(filtered []LogEntry, height int) {
 	if height < 1 {
 		height = 1
 	}
-	filtered := s.FilteredEntries()
 	total := len(filtered)
 	maxScroll := max(0, total-height)
 	if s.Scroll < 0 {
@@ -454,7 +514,7 @@ func (s *LogViewerState) MoveFocus(delta int, height int) {
 		return
 	}
 	if delta < 0 && s.Follow {
-		start, _, _ := s.VisibleWindow(height)
+		start, _, _ := s.visibleWindowFor(filtered, height)
 		s.Scroll = start
 		s.Follow = false
 	}
@@ -465,14 +525,14 @@ func (s *LogViewerState) MoveFocus(delta int, height int) {
 	if s.Focused >= len(filtered) {
 		s.Focused = len(filtered) - 1
 	}
-	s.ensureFocusVisible(height)
+	s.ensureFocusVisible(height, filtered)
 }
 
-func (s *LogViewerState) ensureFocusVisible(height int) {
+func (s *LogViewerState) ensureFocusVisible(height int, filtered []LogEntry) {
 	if height < 1 {
 		height = 1
 	}
-	start, end, _ := s.VisibleWindow(height)
+	start, end, _ := s.visibleWindowFor(filtered, height)
 	if s.Focused < start {
 		s.Scroll = s.Focused
 		s.Follow = false
@@ -481,7 +541,7 @@ func (s *LogViewerState) ensureFocusVisible(height int) {
 		s.Scroll = s.Focused - height + 1
 		s.Follow = false
 	}
-	s.normalize(height)
+	s.normalizeWith(filtered, height)
 }
 
 func (s *LogViewerState) ToggleSelectFocused() {
@@ -522,7 +582,7 @@ func (s *LogViewerState) ClearSelection() {
 	s.Selection = make(map[int64]bool)
 }
 
-func (s LogViewerState) SelectedEntries() []LogEntry {
+func (s *LogViewerState) SelectedEntries() []LogEntry {
 	if len(s.Selection) == 0 {
 		return nil
 	}
@@ -536,7 +596,7 @@ func (s LogViewerState) SelectedEntries() []LogEntry {
 	return out
 }
 
-func (s LogViewerState) FocusedEntry() (LogEntry, bool) {
+func (s *LogViewerState) FocusedEntry() (LogEntry, bool) {
 	filtered := s.FilteredEntries()
 	if s.Focused < 0 || s.Focused >= len(filtered) {
 		return LogEntry{}, false

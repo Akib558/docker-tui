@@ -80,9 +80,14 @@ func buildLogCells(entry LogEntry, bodyW int, showTag bool, targets map[string]L
 		msgBudget = 8
 	}
 
-	line := strings.ReplaceAll(entry.Message, "\n", " ")
+	line := entry.Message
+	const maxLogRenderBytes = 8192
+	if len(line) > maxLogRenderBytes {
+		line = line[:maxLogRenderBytes]
+	}
+	line = strings.ReplaceAll(line, "\n", " ")
 	line = strings.ReplaceAll(line, "\t", " ")
-	if lipgloss.Width(line) > msgBudget {
+	if displayWidth(line) > msgBudget {
 		line = truncate(line, msgBudget)
 	}
 

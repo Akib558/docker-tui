@@ -86,6 +86,7 @@ func (m *Model) computeFilteredContainers() []docker.ContainerInfo {
 func (m *Model) invalidateDashboardCache() {
 	m.dashboardCache = ""
 	m.dashboardCacheW = 0
+	invalidateFrameMemo()
 }
 
 func (m *Model) pruneHistoryKeys() {

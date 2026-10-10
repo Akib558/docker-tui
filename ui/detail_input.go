@@ -41,7 +41,7 @@ func appendTerminalInput(dst *string, msg tea.KeyMsg) bool {
 
 func (m Model) handleDetailTerminalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
+	case "esc", "ctrl+]":
 		m.terminalInputFocused = false
 		return m, nil
 	case "ctrl+\\":

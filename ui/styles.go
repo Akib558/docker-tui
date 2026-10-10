@@ -71,6 +71,7 @@ func applyTheme(t *config.Theme) {
 	colorCyan = lipgloss.Color(t.Cyan)
 	colorTitleFg = lipgloss.Color(t.TitleFg)
 	rebuildStyles()
+	invalidateFrameMemo()
 }
 
 func rebuildStyles() {
@@ -132,4 +133,8 @@ func rebuildStyles() {
 		BorderLeft(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(colorWarning)
 
 	selectedMarkStyle = lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
+
+	clearStylePairs()
+	prewarmStylePairs()
+	invalidateFrameMemo()
 }

@@ -36,17 +36,6 @@ type RowStyle struct {
 	MinFG    lipgloss.Color // floor colour for cells too close to BG to read
 }
 
-func displayWidth(s string) int {
-	return runewidth.StringWidth(s)
-}
-
-func truncateDisplay(s string, maxW int) string {
-	if maxW < 1 {
-		return ""
-	}
-	return runewidth.Truncate(s, maxW, "")
-}
-
 // glyphPad pads text to an exact display width (fixes ambiguous-width icons).
 func glyphPad(text string, targetWidth int) string {
 	if targetWidth < 1 {
@@ -70,26 +59,25 @@ func prepareCellText(text string, width int) string {
 	return text
 }
 
-func cellStyle(cell Cell, rowBG, minFG lipgloss.Color) lipgloss.Style {
-	style := lipgloss.NewStyle()
-	bg := rowBG
+func cellFG(cell Cell, rowBG, minFG lipgloss.Color) (fg, bg lipgloss.Color, bold bool) {
+	bg = rowBG
 	if cell.BG != "" {
 		bg = cell.BG
 	}
-	fg := cell.FG
+	fg = cell.FG
 	if fg != "" && bg != "" && minFG != "" && !readableOn(fg, bg) {
 		fg = minFG
 	}
-	if fg != "" {
-		style = style.Foreground(fg)
+	return fg, bg, cell.Bold
+}
+
+func renderCellPart(cell Cell, rowBG, minFG lipgloss.Color) string {
+	if cell.Bar && cell.Width > 0 {
+		return renderBarSegments(cell.BarPercent, cell.Width, rowBG)
 	}
-	if bg != "" {
-		style = style.Background(bg)
-	}
-	if cell.Bold {
-		style = style.Bold(true)
-	}
-	return style
+	fg, bg, bold := cellFG(cell, rowBG, minFG)
+	text := prepareCellText(cell.Text, cell.Width)
+	return wrapWithStyle(text, fg, bg, bold)
 }
 
 // readableOn reports whether fg is distinguishable from bg.
@@ -104,7 +92,7 @@ func readableOn(fg, bg lipgloss.Color) bool {
 func renderBarSegments(percent float64, width int, rowBG lipgloss.Color) string {
 	if width <= 5 {
 		text := fmt.Sprintf("%3.0f%%", percent)
-		return cellStyle(Cell{FG: colorSubtext}, rowBG, "").Render(text)
+		return wrapWithStyle(text, colorSubtext, rowBG, false)
 	}
 	barWidth := width - 5
 	if barWidth < 2 {
@@ -127,22 +115,14 @@ func renderBarSegments(percent float64, width int, rowBG lipgloss.Color) string 
 		fillColor = colorPrimary
 	}
 
-	fillStyle := lipgloss.NewStyle().Foreground(fillColor)
-	emptyStyle := lipgloss.NewStyle().Foreground(colorBarTrack)
-	pctStyle := lipgloss.NewStyle().Foreground(colorSubtext)
-	if rowBG != "" {
-		if !readableOn(colorBarTrack, rowBG) {
-			emptyStyle = emptyStyle.Foreground(colorSubtext)
-		}
-		emptyStyle = emptyStyle.Background(rowBG)
-		fillStyle = fillStyle.Background(rowBG)
-		pctStyle = pctStyle.Background(rowBG)
+	emptyFG := colorBarTrack
+	if rowBG != "" && !readableOn(colorBarTrack, rowBG) {
+		emptyFG = colorSubtext
 	}
-
-	bar := fillStyle.Render(strings.Repeat(glyphBarFill, filled)) +
-		emptyStyle.Render(strings.Repeat(glyphBarEmpty, empty))
-	out := bar + pctStyle.Render(" "+fmt.Sprintf("%3.0f%%", percent))
-	if got := lipgloss.Width(out); got > width {
+	bar := wrapWithStyle(strings.Repeat(glyphBarFill, filled), fillColor, rowBG, false) +
+		wrapWithStyle(strings.Repeat(glyphBarEmpty, empty), emptyFG, rowBG, false)
+	out := bar + wrapWithStyle(" "+fmt.Sprintf("%3.0f%%", percent), colorSubtext, rowBG, false)
+	if got := renderedWidth(out); got > width {
 		out = clampRenderedWidth(out, width)
 	}
 	return out
@@ -156,62 +136,33 @@ func RenderRow(totalWidth int, cells []Cell, rs RowStyle) string {
 	cells = fitCells(totalWidth, cells)
 	bg := rs.BG
 
-	// Every column, including separators and padding, is emitted through a
-	// style carrying the row background. A raw string here is a hole.
-	pad := func(n int) string {
-		if n < 1 {
-			return ""
-		}
-		s := lipgloss.NewStyle()
-		if bg != "" {
-			s = s.Background(bg)
-		}
-		return s.Render(strings.Repeat(" ", n))
-	}
-
 	rail := rs.Rail
 	if rail == "" {
 		rail = " "
 	}
-	railStyle := lipgloss.NewStyle()
-	if rs.RailFG != "" {
-		railStyle = railStyle.Foreground(rs.RailFG).Bold(true)
-	}
-	if bg != "" {
-		railStyle = railStyle.Background(bg)
-	}
-
 	marker := rs.Marker
 	if marker == "" {
 		marker = " "
 	}
-	markerStyle := lipgloss.NewStyle()
-	if rs.MarkerFG != "" {
-		markerStyle = markerStyle.Foreground(rs.MarkerFG).Bold(true)
-	}
-	if bg != "" {
-		markerStyle = markerStyle.Background(bg)
-	}
 
-	line := railStyle.Render(glyphPad(rail, 1)) +
-		markerStyle.Render(glyphPad(marker, 1)) +
-		pad(1)
+	var b strings.Builder
+	b.Grow(totalWidth * 4)
+	b.WriteString(wrapWithStyle(glyphPad(rail, 1), rs.RailFG, bg, rs.RailFG != ""))
+	b.WriteString(wrapWithStyle(glyphPad(marker, 1), rs.MarkerFG, bg, rs.MarkerFG != ""))
+	b.WriteString(bgPad(1, bg))
 
 	for i, cell := range cells {
-		var part string
-		if cell.Bar && cell.Width > 0 {
-			part = renderBarSegments(cell.BarPercent, cell.Width, bg)
-		} else {
-			part = cellStyle(cell, bg, rs.MinFG).Render(prepareCellText(cell.Text, cell.Width))
-		}
-		line += part
+		b.WriteString(renderCellPart(cell, bg, rs.MinFG))
 		if i < len(cells)-1 {
-			line += pad(1)
+			b.WriteString(bgPad(1, bg))
 		}
 	}
 
-	line += pad(totalWidth - lipgloss.Width(line))
-	if lipgloss.Width(line) > totalWidth {
+	line := b.String()
+	if pad := totalWidth - renderedWidth(line); pad > 0 {
+		line += bgPad(pad, bg)
+	}
+	if renderedWidth(line) > totalWidth {
 		line = clampRenderedWidth(line, totalWidth)
 	}
 	return line
@@ -221,7 +172,7 @@ func clampRenderedWidth(s string, maxW int) string {
 	if maxW < 1 {
 		return ""
 	}
-	if lipgloss.Width(s) <= maxW {
+	if renderedWidth(s) <= maxW {
 		return s
 	}
 	return ansi.Truncate(s, maxW, "")

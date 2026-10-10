@@ -50,12 +50,12 @@ func TestNewEventDoesNotMoveCursorWhenScrolledUp(t *testing.T) {
 	}
 }
 
-// TestNewEventTrimsOldestAndKeepsCursorFollowing checks the 500-event cap:
+// TestNewEventTrimsOldestAndKeepsCursorFollowing checks the event cap:
 // once the oldest event is dropped, an already-at-the-tail cursor must
 // still land on the new last index (not run off the end).
 func TestNewEventTrimsOldestAndKeepsCursorFollowing(t *testing.T) {
 	m := Model{}
-	for i := 0; i < 500; i++ {
+	for i := 0; i < maxEventEntries; i++ {
 		m.events = append(m.events, docker.DockerEvent{Type: "container", Action: "start"})
 	}
 	m.eventsCursor = len(m.events) - 1
@@ -63,8 +63,8 @@ func TestNewEventTrimsOldestAndKeepsCursorFollowing(t *testing.T) {
 	model, _ := m.Update(newEventMsg{ev: docker.DockerEvent{Type: "container", Action: "die"}})
 	m = model.(Model)
 
-	if len(m.events) != 500 {
-		t.Fatalf("len(m.events) = %d, want 500 (capped)", len(m.events))
+	if len(m.events) != maxEventEntries {
+		t.Fatalf("len(m.events) = %d, want %d (capped)", len(m.events), maxEventEntries)
 	}
 	if m.eventsCursor != len(m.events)-1 {
 		t.Fatalf("eventsCursor = %d, want %d after trim", m.eventsCursor, len(m.events)-1)

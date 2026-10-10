@@ -35,7 +35,7 @@ func (m Model) viewList() string {
 
 	dash := m.dashboardCache
 	if dash == "" || m.dashboardCacheW != m.width {
-		dash = m.renderDashboard(m.width)
+		dash = m.memoizedStatusStrip(m.width)
 	}
 	s.Extra = append(s.Extra, dash)
 	if m.cfg != nil && !m.cfg.HintDismissed {
@@ -63,13 +63,13 @@ func (m Model) viewList() string {
 		return m.renderListScreen(s)
 	}
 
-	s.Rows = make([]ListTableRow, 0, len(filtered))
-	for _, ct := range filtered {
-		s.Rows = append(s.Rows, ListTableRow{
+	m.fillVisibleListRows(&s, len(filtered), func(i int) ListTableRow {
+		ct := filtered[i]
+		return ListTableRow{
 			Cells:    m.listRowCells(ct, cols),
 			Selected: m.selected[ct.ID],
-		})
-	}
+		}
+	})
 	return m.renderListScreen(s)
 }
 
@@ -98,6 +98,10 @@ func headerVersion() string {
 }
 
 func (m Model) renderHeader(w int) string {
+	return m.memoizedHeader(w)
+}
+
+func (m Model) buildHeader(w int) string {
 	logo := lipgloss.NewStyle().Bold(true).Foreground(colorPrimary).Render(glyphLogo + " DOCKER TUI")
 	logo += lipgloss.NewStyle().Foreground(colorSubtext).Render(" " + headerVersion())
 

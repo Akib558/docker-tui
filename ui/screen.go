@@ -22,17 +22,19 @@ const (
 // renderer below is the only thing that turns it into text, so every view
 // gets identical chrome in identical order.
 type ListScreen struct {
-	Title    string
-	Count    int    // total objects, before filtering
-	Selected int    // multi-selection count; 0 hides the badge
-	Filter   string // active filter text; "" hides the filter bar
-	Cols     []ListColumn
-	Rows     []ListTableRow
-	Cursor   int
-	State    ScreenState
-	Message  string   // body text for Loading / Empty / NoMatch / Error
-	Extra    []string // pre-rendered lines between the title and the table
-	Help     string   // pre-rendered help bar content
+	Title     string
+	Count     int    // total objects, before filtering
+	Selected  int    // multi-selection count; 0 hides the badge
+	Filter    string // active filter text; "" hides the filter bar
+	Cols      []ListColumn
+	Rows      []ListTableRow
+	RowCount  int // total rows when Rows is a scroll window; 0 → len(Rows)
+	RowOffset int // index of Rows[0] in the full list
+	Cursor    int
+	State     ScreenState
+	Message   string   // body text for Loading / Empty / NoMatch / Error
+	Extra     []string // pre-rendered lines between the title and the table
+	Help      string   // pre-rendered help bar content
 }
 
 // screenChrome counts the non-row lines a screen draws, so BodyRows can be
@@ -67,7 +69,7 @@ func (m Model) renderListScreen(s ListScreen) string {
 	w := m.width
 	var b strings.Builder
 
-	b.WriteString(m.renderHeader(w))
+	b.WriteString(m.memoizedHeader(w))
 	b.WriteString(clampRenderedWidth(renderViewTitle(s.Title, s.Count, s.Selected), w))
 	b.WriteString("\n")
 
@@ -85,31 +87,27 @@ func (m Model) renderListScreen(s ListScreen) string {
 		return b.String()
 	}
 
-	baseChrome := screenChrome(s, m.hasActiveNotification())
-	visible := newFrame(w, m.height, baseChrome).BodyRows
-	if len(s.Rows) > visible {
-		// The scroll indicator itself takes a line that baseChrome didn't
-		// reserve. Recompute with it counted, so the indicator doesn't push
-		// the output one line past the terminal height — the same
-		// two-pass check the pre-scaffold listChrome/listBodyRowsEstimate
-		// used for this exact problem.
-		visible = newFrame(w, m.height, baseChrome+1).BodyRows
+	total := s.RowCount
+	if total == 0 {
+		total = len(s.Rows)
+	}
+	rowOffset := s.RowOffset
+	if total == 0 {
+		rowOffset = 0
 	}
 
 	b.WriteString(m.renderScreenTableHeader(s) + "\n")
 
-	start := 0
-	if s.Cursor >= visible {
-		start = s.Cursor - visible + 1
-	}
-	end := min(start+visible, len(s.Rows))
+	visible := m.listVisibleBodyRows(s, total)
+	start, end := listScrollWindow(s.Cursor, total, visible)
 	for i := start; i < end; i++ {
-		kind := listRowKind(i, s.Cursor, s.Rows[i].Selected)
-		b.WriteString(renderRowFromKind(w, kind, i, s.Rows[i].Cells) + "\n")
+		row := s.Rows[i-rowOffset]
+		kind := listRowKind(i, s.Cursor, row.Selected)
+		b.WriteString(renderRowFromKind(w, kind, i, row.Cells) + "\n")
 	}
 
-	if len(s.Rows) > visible {
-		b.WriteString(m.renderScrollIndicator(s.Cursor, len(s.Rows)) + "\n")
+	if total > visible {
+		b.WriteString(m.renderScrollIndicator(s.Cursor, total) + "\n")
 	}
 
 	b.WriteString(m.renderNotification())

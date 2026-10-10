@@ -14,7 +14,7 @@ func (m Model) renderDashboard(w int) string {
 	if len(m.containers) == 0 {
 		return ""
 	}
-	return m.renderStatusStrip(w)
+	return m.memoizedStatusStrip(w)
 }
 
 func (m Model) containerStateSummary() []struct {

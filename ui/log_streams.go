@@ -7,37 +7,54 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/akib558/docker-tui/docker"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m Model) fetchCentralLogTails(targets []LogTarget) tea.Cmd {
-	cmds := make([]tea.Cmd, 0, len(targets))
-	for _, target := range targets {
-		target := target
-		cmds = append(cmds, func() tea.Msg {
-			records, err := m.client.GetContainerLogRecords(target.ID, 100)
-			if err != nil {
-				return centralLogTailMsg{entries: []LogEntry{
-					systemLogEntry(target, fmt.Sprintf("unable to fetch logs: %v", err)),
-				}}
-			}
+const centralLogTailConcurrency = 8
 
-			entries := make([]LogEntry, 0, len(records))
-			for _, record := range records {
-				entries = append(entries, LogEntry{
-					ContainerID:   target.ID,
-					ContainerName: target.Name,
-					Timestamp:     record.Timestamp,
-					Message:       record.Message,
-				})
-			}
-			SortLogEntries(entries)
-			return centralLogTailMsg{entries: entries}
-		})
+func (m Model) fetchCentralLogTails(targets []LogTarget) tea.Cmd {
+	return func() tea.Msg {
+		if len(targets) == 0 {
+			return centralLogTailsBatchMsg{}
+		}
+		sem := make(chan struct{}, centralLogTailConcurrency)
+		var mu sync.Mutex
+		var all []LogEntry
+		var wg sync.WaitGroup
+		for _, target := range targets {
+			wg.Add(1)
+			go func(target LogTarget) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				records, err := m.client.GetContainerLogRecords(target.ID, 100)
+				var entries []LogEntry
+				if err != nil {
+					entries = []LogEntry{systemLogEntry(target, fmt.Sprintf("unable to fetch logs: %v", err))}
+				} else {
+					entries = make([]LogEntry, 0, len(records))
+					for _, record := range records {
+						entries = append(entries, LogEntry{
+							ContainerID:   target.ID,
+							ContainerName: target.Name,
+							Timestamp:     record.Timestamp,
+							Message:       record.Message,
+						})
+					}
+				}
+				mu.Lock()
+				all = append(all, entries...)
+				mu.Unlock()
+			}(target)
+		}
+		wg.Wait()
+		SortLogEntries(all)
+		return centralLogTailsBatchMsg{entries: all}
 	}
-	return tea.Batch(cmds...)
 }
 
 func (m Model) startCentralLogStreams(targets []LogTarget) tea.Cmd {
@@ -87,20 +104,26 @@ func (m Model) startCentralLogStream(target LogTarget) tea.Cmd {
 
 		var readNext tea.Cmd
 		readNext = func() tea.Msg {
-			select {
-			case entry, ok := <-ch:
-				if !ok {
-					var err error
-					select {
-					case err = <-errCh:
-					default:
-					}
-					return centralLogStreamDoneMsg{target: target, err: err}
+			batch, more := drainLogChannel(ch, ctx)
+			if len(batch) == 0 && !more {
+				var err error
+				select {
+				case err = <-errCh:
+				default:
 				}
-				return centralLogLineMsg{entry: entry, next: readNext}
-			case <-ctx.Done():
+				return centralLogStreamDoneMsg{target: target, err: err}
+			}
+			var next tea.Cmd
+			if more {
+				next = readNext
+			}
+			if len(batch) == 0 {
+				if next != nil {
+					return next()
+				}
 				return centralLogStreamDoneMsg{target: target}
 			}
+			return centralLogBatchMsg{entries: batch, next: next}
 		}
 
 		return centralLogStreamStartMsg{cancel: cancel, next: readNext}

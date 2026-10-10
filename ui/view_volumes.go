@@ -44,10 +44,10 @@ func (m Model) viewVolumes() string {
 		return m.renderListScreen(s)
 	}
 
-	s.Rows = make([]ListTableRow, 0, len(vols))
-	for _, v := range vols {
+	m.fillVisibleListRows(&s, len(vols), func(i int) ListTableRow {
+		v := vols[i]
 		cells := []Cell{{Text: truncate(v.DisplayName(), cols[0].Width), Width: cols[0].Width, FG: colorText}}
-		for i, c := range cols[1:] {
+		for j, c := range cols[1:] {
 			var text string
 			var fg lipgloss.Color
 			switch c.Label {
@@ -58,10 +58,10 @@ func (m Model) viewVolumes() string {
 			case "SCOPE":
 				text, fg = v.Scope, colorMuted
 			}
-			cells = append(cells, Cell{Text: truncate(text, cols[i+1].Width), Width: cols[i+1].Width, FG: fg})
+			cells = append(cells, Cell{Text: truncate(text, cols[j+1].Width), Width: cols[j+1].Width, FG: fg})
 		}
-		s.Rows = append(s.Rows, ListTableRow{Cells: cells, Selected: m.selected[v.Name]})
-	}
+		return ListTableRow{Cells: cells, Selected: m.selected[v.Name]}
+	})
 	return m.renderListScreen(s)
 }
 

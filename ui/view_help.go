@@ -70,6 +70,7 @@ func (m Model) centralLogsHelp(w int) string {
 	return renderHelpBar(w, fmtKeys([]struct{ key, desc string }{
 		{"j/k", "focus line"},
 		{"pgup/pgdn", "page"},
+		{"enter", "detail modal"},
 		{"space/V", "select"},
 		{"1-9", "toggle container"},
 		{"/", "filter"},
@@ -93,6 +94,7 @@ func (m Model) detailHelp(w int) string {
 		keys = []struct{ key, desc string }{
 			{"tab", "switch tab"},
 			{"j/k", "focus line"},
+			{"enter", "detail modal"},
 			{"space", "select"},
 			{"V", "range select"},
 			{"y", "copy selection"},
@@ -105,12 +107,11 @@ func (m Model) detailHelp(w int) string {
 	} else if m.detailTab == tabTerminal {
 		keys = []struct{ key, desc string }{
 			{"tab", "switch tab"},
-			{"i", "focus input"},
-			{"enter", "send"},
+			{"i/enter", "attach · focus input"},
+			{"x", "connect (no focus)"},
+			{"esc/ctrl+]", "release focus / back"},
 			{"ctrl+\\", "detach"},
-			{"x", "reconnect"},
 			{"?", "help"},
-			{"esc", "back"},
 		}
 	} else if m.detailTab == tabDiff {
 		keys = []struct{ key, desc string }{
@@ -156,6 +157,20 @@ func (m Model) eventsHelpKeys() string {
 		{"?", "help"},
 		{"esc", "back"},
 	})
+}
+
+// logDetailModalHelpKeys documents keys for the log detail overlay (see README).
+func logDetailModalHelpKeys() []struct{ key, desc string } {
+	return []struct{ key, desc string }{
+		{"tab/shift+tab", "switch pane focus (split layout)"},
+		{"h/← / l/→", "focus left / right pane"},
+		{"j/k", "item (left) or scroll body (right)"},
+		{"space/b", "page down / up body (right pane)"},
+		{"g/G", "first/last item (left) or top/bottom body (right)"},
+		{"pgup/pgdn", "scroll body"},
+		{"y/Y", "copy line / copy all"},
+		{"esc/q/enter", "close"},
+	}
 }
 
 // ── Notification ─────────────────────────────────────────────────────────

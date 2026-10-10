@@ -29,14 +29,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case initMsg:
 		m.client = msg.client
-		m.containers = msg.containers
+		m.systemMem = docker.GetSystemMemory()
+		m.systemLoad = docker.GetSystemLoad()
+		return m, tea.Batch(m.refreshContainers(), m.loadOverview())
+
+	case overviewMsg:
 		m.overview = msg.overview
-		m.systemMem = msg.sysMem
-		m.systemLoad = msg.sysLoad
-		m.loading = false
-		m.lastRefresh = time.Now()
-		m.fetchStats = true
-		return m, m.collectStats()
+		return m, nil
 
 	case loadHistMsg:
 		m.cpuHistory = msg.cpu
@@ -61,7 +60,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dashboardCache = m.renderDashboard(m.width)
 			m.dashboardCacheW = m.width
 		}
-		return m, nil
+		var cmds []tea.Cmd
+		if !m.fetchStats && m.needsStats() {
+			m.fetchStats = true
+			m.statsGen++
+			cmds = append(cmds, m.collectStats(m.statsGen))
+		}
+		return m, tea.Batch(cmds...)
 
 	case imagesMsg:
 		m.images = []docker.ImageInfo(msg)
@@ -79,24 +84,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case statsMsg:
-		m.fetchStats = false
-		m.stats = msg.stats
-		m.systemMem = msg.sysMem
-		m.systemLoad = msg.sysLoad
+		if msg.gen != 0 && msg.gen != m.statsGen {
+			return m, nil
+		}
 		for id, s := range msg.stats {
+			m.stats[id] = s
 			m.cpuHistory[id] = appendHist(m.cpuHistory[id], s.CPUPercent)
 			m.memHistory[id] = appendHist(m.memHistory[id], s.MemPercent)
 			m.checkAlerts(id, s)
+		}
+		if msg.done {
+			m.fetchStats = false
+			m.systemMem = msg.sysMem
+			m.systemLoad = msg.sysLoad
 		}
 		if m.sortMode == sortCPU || m.sortMode == sortMemory {
 			m.rebuildFilteredCache()
 		}
 		m.invalidateDashboardCache()
-		// save history every ~10 ticks to avoid disk thrash
-		if m.tickCount%10 == 0 {
-			return m, m.saveHistory()
+		var cmds []tea.Cmd
+		if !msg.done && msg.waitCh != nil {
+			cmds = append(cmds, m.waitStatsBatch(msg.waitCh))
 		}
-		return m, nil
+		if msg.done && m.tickCount%10 == 0 {
+			cmds = append(cmds, m.saveHistory())
+		}
+		return m, tea.Batch(cmds...)
 
 	case inspectMsg:
 		m.inspected = msg.info
@@ -120,6 +133,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case logBatchMsg:
+		m.logViewer.Append(msg.entries...)
+		if m.view == viewDetail && m.detailTab == tabLogs && m.liveLogging {
+			return m, msg.next
+		}
+		return m, nil
+
 	case logStreamDoneMsg:
 		m.liveLogging = false
 		return m, nil
@@ -128,12 +148,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.centralLogs.AppendSorted(msg.entries...)
 		return m, nil
 
+	case centralLogTailsBatchMsg:
+		m.centralLogs.AppendSortedBatch(msg.entries)
+		return m, nil
+
+	case centralLogFilterDebounceMsg:
+		m.centralLogs.SetFilter(m.centralLogFilter)
+		return m, nil
+
 	case centralLogStreamStartMsg:
 		m.centralLogCancels = append(m.centralLogCancels, msg.cancel)
 		return m, msg.next
 
 	case centralLogLineMsg:
 		m.centralLogs.AppendSorted(msg.entry)
+		if m.view == viewLogs {
+			return m, msg.next
+		}
+		return m, nil
+
+	case centralLogBatchMsg:
+		m.centralLogs.AppendSortedBatch(msg.entries)
 		if m.view == viewLogs {
 			return m, msg.next
 		}
@@ -154,7 +189,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.terminalActive = true
 		m.terminalFollow = true
 		m.terminalShell = msg.shell
-		m.terminalInputFocused = m.detailTab == tabTerminal
 		if m.terminalOutput == "" {
 			m.terminalOutput = fmt.Sprintf("Connected to shell: %s\n", msg.shell)
 		}
@@ -182,16 +216,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case newEventMsg:
 		wasAtEnd := m.eventsCursor >= len(m.events)-1
 		m.events = append(m.events, msg.ev)
-		if len(m.events) > 500 {
-			m.events = m.events[1:]
-			if m.eventsCursor > 0 {
-				m.eventsCursor--
-			}
-		}
+		m.compactEvents()
 		if wasAtEnd {
 			m.eventsCursor = len(m.events) - 1
 		}
 		return m, msg.next
+
+	case eventBatchMsg:
+		wasAtEnd := m.eventsCursor >= len(m.events)-1
+		m.events = append(m.events, msg.events...)
+		m.compactEvents()
+		if wasAtEnd {
+			m.eventsCursor = len(m.events) - 1
+		}
+		if msg.next != nil {
+			return m, msg.next
+		}
+		return m, nil
 
 	case eventStreamStartMsg:
 		m.eventsCancel = msg.cancel
@@ -269,7 +310,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if !m.fetchStats && m.needsStats() {
 				m.fetchStats = true
-				cmds = append(cmds, m.collectStats())
+				m.statsGen++
+				cmds = append(cmds, m.collectStats(m.statsGen))
 			}
 		}
 		return m, tea.Batch(cmds...)
@@ -508,6 +550,10 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) openDetail(c docker.ContainerInfo) (tea.Model, tea.Cmd) {
+	if m.inspected != nil && m.inspected.ID != c.ID {
+		m.stopTerminalSession()
+		m.terminalInputFocused = false
+	}
 	m.view = viewDetail
 	m.detailScroll = 0
 	m.detailTab = tabInfo
@@ -919,6 +965,9 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.helpScroll = 0
 		}
 
+	case dialogLogDetail:
+		return m.handleLogDetailDialog(msg)
+
 	case dialogCommandPalette:
 		switch msg.String() {
 		case "esc":
@@ -962,13 +1011,8 @@ func (m Model) handleDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ── Detail ──────────────────────────────────────────────────────────────
 
 func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.detailTab == tabTerminal && m.terminalActive {
-		if !m.terminalInputFocused && isTerminalPrintableKey(msg) {
-			m.terminalInputFocused = true
-		}
-		if m.terminalInputFocused {
-			return m.handleDetailTerminalInput(msg)
-		}
+	if m.detailTab == tabTerminal && m.terminalActive && m.terminalInputFocused {
+		return m.handleDetailTerminalInput(msg)
 	}
 
 	switch msg.String() {
@@ -1032,6 +1076,7 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "5":
 		m.detailTab = tabTerminal
 		m.detailScroll = 0
+		m.terminalInputFocused = false
 		return m.onTabSwitch()
 	case "6":
 		m.detailTab = tabDiff
@@ -1084,6 +1129,10 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "y":
 			return m.copyLogViewerLines(&m.logViewer)
+		case "enter":
+			if nm, ok := m.openLogDetailModal(&m.logViewer, false); ok {
+				return nm, nil
+			}
 		case "L":
 			m.logViewer.ShowLegend = !m.logViewer.ShowLegend
 			return m, nil
@@ -1098,6 +1147,9 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "i", "enter":
 			m.terminalInputFocused = true
+			if m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
+				return m, m.startTerminal(m.inspected.ID)
+			}
 			return m, nil
 		case "x":
 			if m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
@@ -1247,20 +1299,10 @@ func (m Model) onTabSwitch() (tea.Model, tea.Cmd) {
 		m.processLoaded = false
 		return m, m.getTop(m.inspected.ID)
 	}
-	if m.detailTab != tabTerminal {
-		m.stopTerminalSession()
-		m.terminalInputFocused = false
-	} else {
+	m.terminalInputFocused = false
+	if m.detailTab == tabTerminal {
 		m.terminalFollow = true
-		if m.terminalActive {
-			m.terminalInputFocused = true
-		} else {
-			m.terminalInputFocused = false
-		}
 		m.syncTerminalScroll()
-	}
-	if m.detailTab == tabTerminal && m.inspected != nil && m.inspected.State == "running" && !m.terminalActive {
-		return m, m.startTerminal(m.inspected.ID)
 	}
 	return m, nil
 }
@@ -1275,15 +1317,21 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.centralLogRegex = false
 			m.centralLogs.SetFilter("")
 			m.centralLogs.SetUseRegex(false)
+			return m, nil
 		case "r":
 			m.centralLogRegex = !m.centralLogRegex
 			m.centralLogs.SetUseRegex(m.centralLogRegex)
+			return m, nil
 		case "backspace":
 			backspaceTextInput(&m.centralLogFilter)
-			m.centralLogs.SetFilter(m.centralLogFilter)
+			if m.centralLogFilter == "" {
+				m.centralLogs.SetFilter("")
+				return m, nil
+			}
+			return m, centralLogFilterDebounceCmd()
 		default:
 			if appendTextInput(&m.centralLogFilter, msg) {
-				m.centralLogs.SetFilter(m.centralLogFilter)
+				return m, centralLogFilterDebounceCmd()
 			}
 		}
 		return m, nil
@@ -1332,6 +1380,10 @@ func (m Model) updateCentralLogs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.centralLogs.ShowLegend = !m.centralLogs.ShowLegend
 	case "y":
 		return m.copyLogViewerLines(&m.centralLogs)
+	case "enter":
+		if nm, ok := m.openLogDetailModal(&m.centralLogs, true); ok {
+			return nm, nil
+		}
 	case "E":
 		return m.promptExportCentralLogs()
 	default:

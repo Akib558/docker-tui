@@ -255,13 +255,17 @@ docker-tui
 | `pgup` / `pgdn` | Page through content |
 | `home` / `end` | Jump to top or bottom; `end` resumes follow mode |
 | `l` | Toggle live log streaming (Logs tab) |
+| `enter` | Open log detail modal (Logs tab) |
+| `space` | Toggle log line selection (Logs tab) |
+| `V` | Select log line range (Logs tab) |
 | `E` | Export log buffer to file (Logs tab) |
-| `x` | Reconnect embedded shell (Terminal tab) |
+| `i` / `enter` | Attach and focus embedded shell (Terminal tab) |
+| `x` | Connect embedded shell without focus (Terminal tab) |
 | `ctrl+\` | Detach embedded shell |
 | `s` / `R` / `P` / `K` | Start-stop / restart / pause / kill container |
 | `d` | Remove container after confirmation |
 | `e` | Open external `docker exec -it` shell |
-| `esc` | Return to the container list |
+| `esc` / `ctrl+]` | Release terminal focus, or return to the container list |
 
 ### Centralized logs
 
@@ -270,12 +274,31 @@ docker-tui
 | `j` / `k`, arrows | Scroll log window |
 | `pgup` / `pgdn` | Page through logs |
 | `home` / `end` | Jump to oldest or newest; `end` resumes follow mode |
+| `enter` | Open log detail modal |
+| `space` | Toggle log line selection |
+| `V` | Select log line range |
 | `y` | Copy selected log line to clipboard |
 | `E` | Export full log buffer to file |
 | `/` | Filter by container name or log message |
 | `r` | Toggle regex mode (while filtering) |
 | `ctrl+u` | Clear active log filter |
 | `esc` | Exit filter mode or return to the list |
+
+### Log detail modal
+
+Opened from centralized logs or the container Logs tab with `enter`. On wide terminals the modal splits into a line list (left) and message body (right); on narrow terminals it collapses to a single pane.
+
+| Key | Action |
+| --- | --- |
+| `tab` / `shift+tab` | Toggle pane focus (split layout); cycle selected lines (single pane) |
+| `h` / `←` · `l` / `→` | Focus left or right pane (split layout) |
+| `j` / `k`, arrows | Change selected line (left focus) or scroll body one line (right focus / single pane) |
+| `space` / `b` | Page down / up in the body (right focus or single pane) |
+| `ctrl+d` / `ctrl+u` | Half-page down / up in the body (right focus) |
+| `g` / `G` | First / last line (left focus) or top / bottom of body (right focus) |
+| `pgup` / `pgdn` | Scroll the message body |
+| `y` / `Y` | Copy current line / copy all selected lines |
+| `esc` / `q` / `enter` | Close modal |
 
 ### Images
 

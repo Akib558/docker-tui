@@ -27,11 +27,7 @@ func (m Model) viewDetail() string {
 	contentWidth := max(boxWidth-6, 24)
 
 	b.WriteString(m.renderHeader(w))
-	b.WriteString(m.renderDetailIdentity(c, w) + "\n\n")
-
-	bar := clampRenderedWidth(m.renderDetailTabs(boxWidth), m.width)
-	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", boxWidth))
-	b.WriteString(bar + "\n" + sep + "\n")
+	b.WriteString(m.memoizedDetailChrome(c, w))
 
 	var tabContent string
 	switch m.detailTab {
@@ -423,21 +419,16 @@ func (m Model) renderTerminalTab(c *docker.ContainerInfo, width int) string {
 	}
 	header := fmt.Sprintf("  Embedded Terminal (%s)", state)
 	b.WriteString(sectionHeaderStyle.Width(width).Render(header) + "\n")
-	if m.terminalShell != "" {
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSubtext).Render("shell: "+m.terminalShell) + "\n")
+	var status string
+	switch {
+	case m.terminalInputFocused:
+		status = "INPUT · Esc release · ctrl+\\ detach"
+	case m.terminalActive:
+		status = "i focus · Esc release · ctrl+\\ detach"
+	default:
+		status = "i attach · x connect"
 	}
-	b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
-		Render("Ctrl+\\ detach · type to send input · Esc release focus") + "\n")
-	if m.terminalInputFocused {
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorSuccess).Bold(true).
-			Render("INPUT FOCUSED · Esc to release") + "\n")
-	} else if m.terminalActive {
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
-			Render("start typing or press i/Enter to focus input") + "\n")
-	} else {
-		b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).
-			Render("press x to connect") + "\n")
-	}
+	b.WriteString("  " + lipgloss.NewStyle().Foreground(colorMuted).Render(status) + "\n")
 	b.WriteString("\n")
 
 	out := sanitizeOutputText(m.terminalOutput)

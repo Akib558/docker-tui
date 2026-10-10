@@ -27,10 +27,10 @@ func (m Model) viewEvents() string {
 		return m.renderListScreen(s)
 	}
 
-	s.Rows = make([]ListTableRow, 0, len(m.events))
-	for _, ev := range m.events {
+	m.fillVisibleListRows(&s, len(m.events), func(i int) ListTableRow {
+		ev := m.events[i]
 		cells := []Cell{{Text: ev.Time.Format("15:04:05"), Width: cols[0].Width, FG: colorMuted}}
-		for i, c := range cols[1:] {
+		for j, c := range cols[1:] {
 			var text string
 			var fg lipgloss.Color
 			switch c.Label {
@@ -43,10 +43,10 @@ func (m Model) viewEvents() string {
 			case "CONTAINER ID":
 				text, fg = ev.ID, colorDim
 			}
-			cells = append(cells, Cell{Text: truncate(text, cols[i+1].Width), Width: cols[i+1].Width, FG: fg})
+			cells = append(cells, Cell{Text: truncate(text, cols[j+1].Width), Width: cols[j+1].Width, FG: fg})
 		}
-		s.Rows = append(s.Rows, ListTableRow{Cells: cells})
-	}
+		return ListTableRow{Cells: cells}
+	})
 	return m.renderListScreen(s)
 }
 

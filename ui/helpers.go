@@ -1,6 +1,32 @@
 package ui
 
-import "time"
+import (
+	"time"
+
+	"github.com/akib558/docker-tui/docker"
+)
+
+const maxEventEntries = 1000
+
+func (m *Model) compactEvents() {
+	if len(m.events) <= maxEventEntries {
+		return
+	}
+	trim := len(m.events) - maxEventEntries
+	if trim > len(m.events)/2 {
+		compact := make([]docker.DockerEvent, maxEventEntries)
+		copy(compact, m.events[trim:])
+		m.events = compact
+	} else {
+		m.events = m.events[trim:]
+	}
+	if m.eventsCursor > 0 {
+		m.eventsCursor -= trim
+		if m.eventsCursor < 0 {
+			m.eventsCursor = 0
+		}
+	}
+}
 
 // ── Notification ────────────────────────────────────────────────────────
 

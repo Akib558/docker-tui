@@ -35,19 +35,37 @@ func (m Model) fetchImages() tea.Cmd {
 	}
 }
 
-func (m Model) collectStats() tea.Cmd {
-	return func() tea.Msg {
-		var ids []string
-		for _, c := range m.containers {
-			if c.State == "running" {
-				ids = append(ids, c.ID)
+func (m Model) collectStats(gen int) tea.Cmd {
+	var ids []string
+	for _, c := range m.containers {
+		if c.State == "running" {
+			ids = append(ids, c.ID)
+		}
+	}
+	ch := make(chan statsMsg, 16)
+	go func() {
+		docker.CollectContainerStats(m.client, ids, docker.StatsBatchInterval(), func(batch docker.StatsBatch) {
+			out := statsMsg{
+				gen:    gen,
+				stats:  batch.Stats,
+				done:   batch.Done,
+				waitCh: ch,
 			}
-		}
-		return statsMsg{
-			stats:   m.client.GetAllContainerStats(ids),
-			sysMem:  docker.GetSystemMemory(),
-			sysLoad: docker.GetSystemLoad(),
-		}
+			if batch.Done {
+				out.sysMem = docker.GetSystemMemory()
+				out.sysLoad = docker.GetSystemLoad()
+			}
+			ch <- out
+		})
+	}()
+	return func() tea.Msg {
+		return <-ch
+	}
+}
+
+func (m Model) waitStatsBatch(ch chan statsMsg) tea.Cmd {
+	return func() tea.Msg {
+		return <-ch
 	}
 }
 
@@ -133,11 +151,21 @@ func (m Model) streamLogs(id string) tea.Cmd {
 
 		var readNext tea.Cmd
 		readNext = func() tea.Msg {
-			line, ok := <-ch
-			if !ok {
+			batch, more := drainLogChannel(ch, ctx)
+			if len(batch) == 0 && !more {
 				return logStreamDoneMsg{}
 			}
-			return logLineMsg{entry: line, next: readNext}
+			var next tea.Cmd
+			if more {
+				next = readNext
+			}
+			if len(batch) == 0 {
+				if next != nil {
+					return next()
+				}
+				return logStreamDoneMsg{}
+			}
+			return logBatchMsg{entries: batch, next: next}
 		}
 		return logStreamStartMsg{cancel: cancel, next: readNext}
 	}
@@ -220,11 +248,21 @@ func (m Model) startEventStream() tea.Cmd {
 
 		var readNext tea.Cmd
 		readNext = func() tea.Msg {
-			ev, ok := <-ch
-			if !ok {
+			batch, more := drainEventChannel(ch, ctx)
+			if len(batch) == 0 && !more {
 				return nil
 			}
-			return newEventMsg{ev: ev, next: readNext}
+			var next tea.Cmd
+			if more {
+				next = readNext
+			}
+			if len(batch) == 0 {
+				if next != nil {
+					return next()
+				}
+				return nil
+			}
+			return eventBatchMsg{events: batch, next: next}
 		}
 		return eventStreamStartMsg{cancel: cancel, next: readNext}
 	}

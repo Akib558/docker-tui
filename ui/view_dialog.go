@@ -26,6 +26,8 @@ func (m Model) renderDialogOverlay() string {
 			lipgloss.NewStyle().MarginTop(1).Render(d))
 	case dialogCommandPalette:
 		d = m.renderCommandPaletteDialog()
+	case dialogLogDetail:
+		d = m.renderLogDetailDialog()
 	}
 	if d == "" {
 		return ""
@@ -186,8 +188,8 @@ func (m Model) helpDialogBodyLines() []string {
 		{"space/V", "select log lines"},
 		{"f", "fetch filesystem diff"},
 		{"p", "refresh process list"},
-		{"i", "focus terminal input"},
-		{"x", "reconnect terminal"},
+		{"i/enter", "attach · focus terminal"},
+		{"x", "connect terminal (no focus)"},
 		{"ctrl+\\", "detach terminal"},
 		{"s/R/P/K/d/e", "container actions (Info/Env tabs only)"},
 	})...)
@@ -195,6 +197,7 @@ func (m Model) helpDialogBodyLines() []string {
 	lines = append(lines, renderSection("Logs", []struct{ key, desc string }{
 		{"/", "filter logs"},
 		{"j/k", "focus line"},
+		{"enter", "log detail modal"},
 		{"space/V", "select lines"},
 		{"1-9", "toggle container (central)"},
 		{"a", "show all containers (central)"},

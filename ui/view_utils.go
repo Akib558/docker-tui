@@ -75,11 +75,11 @@ func truncate(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
 	}
-	if runewidth.StringWidth(s) <= maxLen {
+	if displayWidth(s) <= maxLen {
 		return s
 	}
 	if maxLen <= 1 {
-		return runewidth.Truncate(s, maxLen, "")
+		return truncateDisplay(s, maxLen)
 	}
 	return runewidth.Truncate(s, maxLen-1, "…")
 }
@@ -110,7 +110,12 @@ func formatPortsSummary(ports []docker.PortBinding) string {
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\a]*(\a|\x1b\\)|\x1b[@-_]`)
 
 // stripANSI removes ANSI escape sequences from s.
-func stripANSI(s string) string { return ansiEscapeRE.ReplaceAllString(s, "") }
+func stripANSI(s string) string {
+	if !hasESC(s) {
+		return s
+	}
+	return stripANSIFast(s)
+}
 
 func sanitizeOutputText(s string) string {
 	if s == "" {

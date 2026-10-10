@@ -33,6 +33,7 @@ const (
 	dialogInput
 	dialogHelp
 	dialogCommandPalette
+	dialogLogDetail
 )
 
 // ── Detail tab indices ───────────────────────────────────────────────────
@@ -71,6 +72,7 @@ type Model struct {
 	cpuHistory map[string][]float64
 	memHistory map[string][]float64
 	fetchStats bool
+	statsGen   int
 	alertShown map[string]bool
 
 	// System
@@ -135,6 +137,7 @@ type Model struct {
 
 	// Dialog
 	dialog      dialogMode
+	logModal    LogModalState
 	helpScroll  int
 	confirmMsg  string
 	confirmOK   tea.Cmd
@@ -230,9 +233,12 @@ type logsMsg []LogEntry
 type tickMsg time.Time
 type actionDoneMsg struct{ action, name string }
 type statsMsg struct {
+	gen     int
 	stats   map[string]*docker.ContainerResourceStats
 	sysMem  docker.SystemMemory
 	sysLoad docker.SystemLoad
+	done    bool
+	waitCh  chan statsMsg
 }
 type diffMsg []docker.DiffEntry
 type topMsg struct{ top docker.ContainerTop }
@@ -254,6 +260,10 @@ type logLineMsg struct {
 	entry LogEntry
 	next  tea.Cmd
 }
+type logBatchMsg struct {
+	entries []LogEntry
+	next    tea.Cmd
+}
 type logStreamStartMsg struct {
 	cancel func()
 	next   tea.Cmd
@@ -266,6 +276,14 @@ type centralLogLineMsg struct {
 	entry LogEntry
 	next  tea.Cmd
 }
+type centralLogBatchMsg struct {
+	entries []LogEntry
+	next    tea.Cmd
+}
+type centralLogTailsBatchMsg struct {
+	entries []LogEntry
+}
+type centralLogFilterDebounceMsg struct{}
 type centralLogStreamStartMsg struct {
 	cancel func()
 	next   tea.Cmd
@@ -277,6 +295,10 @@ type centralLogStreamDoneMsg struct {
 type newEventMsg struct {
 	ev   docker.DockerEvent
 	next tea.Cmd
+}
+type eventBatchMsg struct {
+	events []docker.DockerEvent
+	next   tea.Cmd
 }
 type eventStreamStartMsg struct {
 	cancel func()
@@ -303,11 +325,10 @@ type reconnectMsg struct {
 }
 
 type initMsg struct {
-	client     docker.ClientAPI
-	containers []docker.ContainerInfo
-	overview   *docker.DockerOverview
-	sysMem     docker.SystemMemory
-	sysLoad    docker.SystemLoad
+	client docker.ClientAPI
+}
+type overviewMsg struct {
+	overview *docker.DockerOverview
 }
 
 // ── Constructor ─────────────────────────────────────────────────────────
@@ -337,18 +358,23 @@ func initClient() tea.Msg {
 	if err != nil {
 		return errMsg{err}
 	}
-	containers, err := c.ListContainers()
-	if err != nil {
-		return errMsg{err}
+	return initMsg{client: c}
+}
+
+func (m Model) loadOverview() tea.Cmd {
+	return func() tea.Msg {
+		if m.client == nil {
+			return nil
+		}
+		overview, _ := m.client.GetDockerOverview()
+		return overviewMsg{overview: overview}
 	}
-	overview, _ := c.GetDockerOverview()
-	return initMsg{
-		client:     c,
-		containers: containers,
-		overview:   overview,
-		sysMem:     docker.GetSystemMemory(),
-		sysLoad:    docker.GetSystemLoad(),
-	}
+}
+
+func centralLogFilterDebounceCmd() tea.Cmd {
+	return tea.Tick(50*time.Millisecond, func(t time.Time) tea.Msg {
+		return centralLogFilterDebounceMsg{}
+	})
 }
 
 func tickCmd(d time.Duration) tea.Cmd {

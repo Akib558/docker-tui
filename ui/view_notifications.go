@@ -22,17 +22,17 @@ func (m Model) viewNotifications() string {
 		return m.renderListScreen(s)
 	}
 
-	s.Rows = make([]ListTableRow, 0, len(m.notifyHistory))
-	for _, n := range m.notifyHistory {
+	m.fillVisibleListRows(&s, len(m.notifyHistory), func(i int) ListTableRow {
+		n := m.notifyHistory[i]
 		icon, fg := glyphToastOK, colorSuccess
 		if n.IsError {
 			icon, fg = glyphToastErr, colorDanger
 		}
-		s.Rows = append(s.Rows, ListTableRow{Cells: []Cell{
+		return ListTableRow{Cells: []Cell{
 			{Text: n.Timestamp.Format("15:04:05"), Width: cols[0].Width, FG: colorMuted},
 			{Text: icon, Width: cols[1].Width, FG: fg},
 			{Text: truncate(n.Message, cols[2].Width), Width: cols[2].Width, FG: fg},
-		}})
-	}
+		}}
+	})
 	return m.renderListScreen(s)
 }

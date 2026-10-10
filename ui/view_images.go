@@ -36,10 +36,10 @@ func (m Model) viewImages() string {
 		return m.renderListScreen(s)
 	}
 
-	s.Rows = make([]ListTableRow, 0, len(m.images))
-	for _, img := range m.images {
+	m.fillVisibleListRows(&s, len(m.images), func(i int) ListTableRow {
+		img := m.images[i]
 		cells := []Cell{{Text: truncate(img.DisplayTag(), cols[0].Width), Width: cols[0].Width, FG: colorText}}
-		for i, c := range cols[1:] {
+		for j, c := range cols[1:] {
 			var text string
 			var fg lipgloss.Color
 			switch c.Label {
@@ -50,10 +50,10 @@ func (m Model) viewImages() string {
 			case "CREATED":
 				text, fg = img.Created.Format("2006-01-02 15:04"), colorMuted
 			}
-			cells = append(cells, Cell{Text: truncate(text, cols[i+1].Width), Width: cols[i+1].Width, FG: fg})
+			cells = append(cells, Cell{Text: truncate(text, cols[j+1].Width), Width: cols[j+1].Width, FG: fg})
 		}
-		s.Rows = append(s.Rows, ListTableRow{Cells: cells})
-	}
+		return ListTableRow{Cells: cells}
+	})
 	return m.renderListScreen(s)
 }
 
