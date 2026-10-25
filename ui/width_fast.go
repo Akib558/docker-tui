@@ -3,7 +3,6 @@ package ui
 import (
 	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -147,6 +146,3 @@ func stripANSIFast(s string) string {
 	}
 	return string(b)
 }
-
-// lipglossDisplayWidth matches lipgloss.Width; used in tests.
-func lipglossDisplayWidth(s string) int { return lipgloss.Width(s) }

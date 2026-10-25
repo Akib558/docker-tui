@@ -159,20 +159,6 @@ func (m Model) eventsHelpKeys() string {
 	})
 }
 
-// logDetailModalHelpKeys documents keys for the log detail overlay (see README).
-func logDetailModalHelpKeys() []struct{ key, desc string } {
-	return []struct{ key, desc string }{
-		{"tab/shift+tab", "switch pane focus (split layout)"},
-		{"h/← / l/→", "focus left / right pane"},
-		{"j/k", "item (left) or scroll body (right)"},
-		{"space/b", "page down / up body (right pane)"},
-		{"g/G", "first/last item (left) or top/bottom body (right)"},
-		{"pgup/pgdn", "scroll body"},
-		{"y/Y", "copy line / copy all"},
-		{"esc/q/enter", "close"},
-	}
-}
-
 // ── Notification ─────────────────────────────────────────────────────────
 
 func (m Model) renderNotification() string {

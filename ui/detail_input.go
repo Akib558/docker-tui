@@ -11,17 +11,6 @@ func (m Model) detailAllowsContainerActions() bool {
 	}
 }
 
-func isTerminalPrintableKey(msg tea.KeyMsg) bool {
-	switch msg.Type {
-	case tea.KeyRunes:
-		return len(msg.Runes) > 0
-	case tea.KeySpace, tea.KeyTab:
-		return true
-	default:
-		return false
-	}
-}
-
 func appendTerminalInput(dst *string, msg tea.KeyMsg) bool {
 	switch msg.Type {
 	case tea.KeyRunes:
