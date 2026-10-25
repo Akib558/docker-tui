@@ -10,6 +10,7 @@
 set -eu
 
 REPO="Akib558/docker-tui"
+MODULE="github.com/akib558/docker-tui"
 BIN="docker-tui"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 VERSION="${VERSION:-latest}"
@@ -22,7 +23,7 @@ os="$(uname -s)"
 case "$os" in
   Linux)  os="linux" ;;
   Darwin) os="darwin" ;;
-  *) err "unsupported OS '$os'. Try 'go install github.com/$REPO@latest' instead." ;;
+  *) err "unsupported OS '$os'. Try 'go install $MODULE@latest' instead." ;;
 esac
 
 # --- detect arch ---------------------------------------------------------
@@ -30,7 +31,7 @@ arch="$(uname -m)"
 case "$arch" in
   x86_64|amd64) arch="amd64" ;;
   aarch64|arm64) arch="arm64" ;;
-  *) err "unsupported architecture '$arch'. Try 'go install github.com/$REPO@latest' instead." ;;
+  *) err "unsupported architecture '$arch'. Try 'go install $MODULE@latest' instead." ;;
 esac
 
 command -v curl >/dev/null 2>&1 || err "curl is required."
@@ -46,7 +47,7 @@ fi
 info "Looking up the $VERSION release of $REPO..."
 release="$(curl -fsSL "$api" 2>/dev/null || true)"
 [ -n "$release" ] || err "no published release found yet. Install with Go instead:
-    go install github.com/$REPO@latest"
+    go install $MODULE@latest"
 
 url="$(printf '%s\n' "$release" \
   | grep -o '"browser_download_url": *"[^"]*"' \
@@ -54,7 +55,7 @@ url="$(printf '%s\n' "$release" \
   | grep -i "_${os}_${arch}\." \
   | head -n1)"
 [ -n "$url" ] || err "no prebuilt binary for ${os}/${arch} in the latest release.
-    Install with Go instead: go install github.com/$REPO@latest"
+    Install with Go instead: go install $MODULE@latest"
 
 # --- download + extract --------------------------------------------------
 tmp="$(mktemp -d)"

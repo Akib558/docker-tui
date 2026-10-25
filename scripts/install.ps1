@@ -17,6 +17,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = "Akib558/docker-tui"
+$module = "github.com/akib558/docker-tui"
 function Info($m) { Write-Host "==> $m" -ForegroundColor Green }
 function Fail($m) { Write-Host "error: $m" -ForegroundColor Red; exit 1 }
 
@@ -24,7 +25,7 @@ function Fail($m) { Write-Host "error: $m" -ForegroundColor Red; exit 1 }
 $arch = switch ($env:PROCESSOR_ARCHITECTURE) {
   "AMD64" { "amd64" }
   "ARM64" { "arm64" }
-  default { Fail "unsupported architecture '$($env:PROCESSOR_ARCHITECTURE)'. Try: go install github.com/$repo@latest" }
+  default { Fail "unsupported architecture '$($env:PROCESSOR_ARCHITECTURE)'. Try: go install ${module}@latest" }
 }
 
 # --- resolve release -----------------------------------------------------
@@ -36,10 +37,10 @@ $api = if ($Version -eq "latest") {
 
 Info "Looking up the $Version release of $repo..."
 try { $release = Invoke-RestMethod -Uri $api -Headers @{ "User-Agent" = "docker-tui-installer" } }
-catch { Fail "no published release found yet. Install with Go instead:`n    go install github.com/$repo@latest" }
+catch { Fail "no published release found yet. Install with Go instead:`n    go install ${module}@latest" }
 
 $asset = $release.assets | Where-Object { $_.name -match "_windows_$arch\.zip$" } | Select-Object -First 1
-if (-not $asset) { Fail "no prebuilt binary for windows/$arch in the latest release.`n    Install with Go instead: go install github.com/$repo@latest" }
+if (-not $asset) { Fail "no prebuilt binary for windows/$arch in the latest release.`n    Install with Go instead: go install ${module}@latest" }
 
 # --- download + extract --------------------------------------------------
 $tmp = Join-Path $env:TEMP ("docker-tui-" + [guid]::NewGuid())

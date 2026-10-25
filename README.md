@@ -38,7 +38,7 @@ irm https://raw.githubusercontent.com/Akib558/docker-tui/main/scripts/install.ps
 **🐹 With Go**
 
 ```bash
-go install github.com/Akib558/docker-tui@latest
+go install github.com/akib558/docker-tui@latest
 ```
 
 Then just run:
@@ -157,7 +157,7 @@ binary somewhere on your `PATH`.
 ### Go install
 
 ```bash
-go install github.com/Akib558/docker-tui@latest
+go install github.com/akib558/docker-tui@latest
 ```
 
 ### Build from source
@@ -258,6 +258,8 @@ docker-tui
 | `enter` | Open log detail modal (Logs tab) |
 | `space` | Toggle log line selection (Logs tab) |
 | `V` | Select log line range (Logs tab) |
+| `y` | Copy selected log line(s) to clipboard (Logs tab) |
+| `L` | Toggle the log color legend (Logs tab) |
 | `E` | Export log buffer to file (Logs tab) |
 | `i` / `enter` | Attach and focus embedded shell (Terminal tab) |
 | `x` | Connect embedded shell without focus (Terminal tab) |
@@ -265,7 +267,10 @@ docker-tui
 | `s` / `R` / `P` / `K` | Start-stop / restart / pause / kill container |
 | `d` | Remove container after confirmation |
 | `e` | Open external `docker exec -it` shell |
-| `esc` / `ctrl+]` | Release terminal focus, or return to the container list |
+| `t` | Open theme picker |
+| `esc` | Clear log selection, release terminal focus, or return to the container list |
+| `ctrl+]` | Release terminal focus (Terminal tab) |
+| `h` / `backspace` | Return to the container list |
 
 ### Centralized logs
 
@@ -277,12 +282,17 @@ docker-tui
 | `enter` | Open log detail modal |
 | `space` | Toggle log line selection |
 | `V` | Select log line range |
-| `y` | Copy selected log line to clipboard |
+| `y` | Copy selected log line(s) to clipboard |
 | `E` | Export full log buffer to file |
+| `1`–`9` | Show or hide the Nth container's logs |
+| `a` | Show logs from all containers again |
+| `L` | Toggle the container color legend |
 | `/` | Filter by container name or log message |
 | `r` | Toggle regex mode (while filtering) |
 | `ctrl+u` | Clear active log filter |
-| `esc` | Exit filter mode or return to the list |
+| `esc` / `h` | Exit filter mode, clear line selection, or return to the list |
+| `backspace` | Return to the list |
+| `q` | Quit |
 
 ### Log detail modal
 
@@ -309,13 +319,15 @@ Opened from centralized logs or the container Logs tab with `enter`. On wide ter
 | `P` | Prune dangling images after confirmation |
 | `d` | Remove selected image |
 | `r` | Refresh image list |
-| `esc` / `q` | Return to the container list |
+| `t` | Open theme picker |
+| `esc` / `q` / `h` | Return to the container list |
 
 ### Volumes
 
 | Key | Action |
 | --- | --- |
 | `j` / `k`, arrows | Move selection |
+| `g` / `G` | Jump to first / last volume |
 | `space` | Toggle volume selection |
 | `a` | Select or deselect all volumes |
 | `d` | Remove selected volume(s) after confirmation |
@@ -323,20 +335,23 @@ Opened from centralized logs or the container Logs tab with `enter`. On wide ter
 | `/` | Filter by name or driver |
 | `ctrl+u` | Clear filter |
 | `r` | Refresh volume list |
-| `esc` / `q` | Return to the container list |
+| `t` | Open theme picker |
+| `esc` / `q` / `h` | Return to the container list |
 
 ### Networks
 
 | Key | Action |
 | --- | --- |
 | `j` / `k`, arrows | Move selection |
+| `g` / `G` | Jump to first / last network |
 | `space` | Toggle network selection |
 | `a` | Select or deselect all networks |
 | `d` | Remove selected network(s) after confirmation |
 | `/` | Filter by name |
 | `ctrl+u` | Clear filter |
 | `r` | Refresh network list |
-| `esc` / `q` | Return to the container list |
+| `t` | Open theme picker |
+| `esc` / `q` / `h` | Return to the container list |
 
 ### Notification center
 
@@ -345,7 +360,7 @@ Opened from centralized logs or the container Logs tab with `enter`. On wide ter
 | `j` / `k`, arrows | Navigate notifications |
 | `g` / `G` | Jump to oldest / newest |
 | `c` | Clear all notifications |
-| `esc` / `q` | Return to the container list |
+| `esc` / `q` / `h` | Return to the container list |
 
 ### Events
 
@@ -354,7 +369,7 @@ Opened from centralized logs or the container Logs tab with `enter`. On wide ter
 | `j` / `k` | Navigate events |
 | `c` | Clear the event log |
 | `?` | Show full keyboard reference |
-| `esc` / `q` | Return to the container list |
+| `esc` / `q` / `h` | Return to the container list |
 
 ## Configuration
 
