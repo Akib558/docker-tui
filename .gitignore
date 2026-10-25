@@ -41,3 +41,21 @@ coverage.html
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# Local agent notes and working docs (never committed)
+/agent-doc/
+/docs/audit/
+/docs/ui-overhaul/
+
+# Local agent and tool helper files (never committed)
+.claude/
+.gemini/
+.windsurf/
+.cursor/
+.mcp.json
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+opencode.json
+.gitinsight.toml
+.ignore
