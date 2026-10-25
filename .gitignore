@@ -46,6 +46,8 @@ coverage.html
 /agent-doc/
 /docs/audit/
 /docs/ui-overhaul/
+/docs/superpowers/
+/docs/suggestions.md
 
 # Local agent and tool helper files (never committed)
 .claude/

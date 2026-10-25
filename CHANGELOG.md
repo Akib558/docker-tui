@@ -44,7 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dead layout shims (`renderFullWidthRow`, `renderZebraRow`, `renderListRow`, `ContentWidth`).
 - Dead `miniBar`, `progressBar`, `cleanDockerLogs`, `countByState`.
 - Unused `logRegex` and `centralLogClipboard` model fields.
-- Internal `docs/suggestions.md` notes.
 
 ### Previously unreleased
 
